@@ -8,7 +8,8 @@ enum class TerminalItemType {
     OUTPUT,
     APP_ENTRY,
     ERROR,
-    SUCCESS
+    SUCCESS,
+    NOTIFICATION
 }
 
 data class TerminalLogItem(

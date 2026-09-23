@@ -10,9 +10,12 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
+import android.graphics.Color
+import android.graphics.Typeface
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import androidx.core.app.NotificationManagerCompat
 import app.olauncher.service.TerminalNotificationListenerService
 import app.olauncher.BuildConfig
@@ -181,8 +184,135 @@ class TerminalCommandHandler(
         }
     }
 
+    fun addNotification(
+        appLabel: String,
+        packageName: String,
+        title: String,
+        text: String,
+        time: Long
+    ) {
+        val item = formatNotificationItem(time, appLabel, packageName, title, text)
+        callbacks.onAddLog(item)
+    }
+
     fun addNotificationLog(message: String) {
-        callbacks.onAddLog(TerminalLogItem(message, TerminalItemType.SUCCESS))
+        callbacks.onAddLog(TerminalLogItem(message, TerminalItemType.NOTIFICATION))
+    }
+
+    fun formatNotificationItem(
+        time: Long,
+        appLabel: String,
+        packageName: String,
+        title: String,
+        text: String
+    ): TerminalLogItem {
+        val theme = TerminalTheme.fromId(prefs.terminalTheme)
+        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val timeStr = timeFormat.format(Date(time))
+        val ssb = SpannableStringBuilder()
+
+        // 1. Time bracket: [10:45]
+        val tOpen = "["
+        ssb.append(tOpen)
+        ssb.setSpan(ForegroundColorSpan(theme.secondaryColor), ssb.length - tOpen.length, ssb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+        ssb.append(timeStr)
+        ssb.setSpan(ForegroundColorSpan(Color.parseColor("#8BE9FD")), ssb.length - timeStr.length, ssb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+        val tClose = "]"
+        ssb.append(tClose)
+        ssb.setSpan(ForegroundColorSpan(theme.secondaryColor), ssb.length - tClose.length, ssb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+        // 2. Bell icon
+        val bell = " 🔔 "
+        ssb.append(bell)
+        ssb.setSpan(ForegroundColorSpan(Color.parseColor("#FFD54F")), ssb.length - bell.length, ssb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+        // 3. App Badge [AppName]
+        val appColor = getAppNotificationColor(packageName, appLabel, theme)
+        val bOpen = "["
+        ssb.append(bOpen)
+        ssb.setSpan(ForegroundColorSpan(theme.secondaryColor), ssb.length - bOpen.length, ssb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+        val appStart = ssb.length
+        ssb.append(appLabel)
+        ssb.setSpan(ForegroundColorSpan(appColor), appStart, ssb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        ssb.setSpan(StyleSpan(Typeface.BOLD), appStart, ssb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+        val bClose = "]"
+        ssb.append(bClose)
+        ssb.setSpan(ForegroundColorSpan(theme.secondaryColor), ssb.length - bClose.length, ssb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+        // 4. Title (e.g. Sender or Subject)
+        if (title.isNotBlank()) {
+            ssb.append(" ")
+            val titleStart = ssb.length
+            ssb.append(title)
+            ssb.setSpan(ForegroundColorSpan(theme.promptColor), titleStart, ssb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            ssb.setSpan(StyleSpan(Typeface.BOLD), titleStart, ssb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+            if (text.isNotBlank()) {
+                val sep = ": "
+                ssb.append(sep)
+                ssb.setSpan(ForegroundColorSpan(theme.secondaryColor), ssb.length - sep.length, ssb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+        } else if (text.isNotBlank()) {
+            ssb.append(" ")
+        }
+
+        // 5. Message Body
+        if (text.isNotBlank()) {
+            val bodyStart = ssb.length
+            ssb.append(text)
+            ssb.setSpan(ForegroundColorSpan(theme.textColor), bodyStart, ssb.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+
+        // Link appModel so tapping the log item opens the corresponding application
+        val appModel = callbacks.getInstalledApps().firstOrNull {
+            it.appPackage.equals(packageName, ignoreCase = true) || it.appLabel.equals(appLabel, ignoreCase = true)
+        }
+
+        return TerminalLogItem(ssb, TerminalItemType.NOTIFICATION, appModel)
+    }
+
+    private fun getAppNotificationColor(packageName: String, appLabel: String, theme: TerminalTheme): Int {
+        val pkg = packageName.lowercase()
+        val label = appLabel.lowercase()
+        return when {
+            pkg.contains("whatsapp") || label.contains("whatsapp") -> Color.parseColor("#25D366") // WhatsApp Green
+            pkg.contains("youtube") || label.contains("youtube") -> Color.parseColor("#FF5252") // YouTube Red
+            pkg.contains("telegram") || label.contains("telegram") -> Color.parseColor("#29B6F6") // Telegram Sky Blue
+            pkg.contains("messaging") || pkg.contains("mms") || label.contains("message") || label.contains("sms") -> Color.parseColor("#00E5FF") // Messages Cyan
+            pkg.contains("gmail") || pkg.contains("email") || label.contains("gmail") || label.contains("mail") -> Color.parseColor("#FF5252") // Mail Red
+            pkg.contains("instagram") || label.contains("instagram") -> Color.parseColor("#FF4081") // Instagram Pink
+            pkg.contains("discord") || label.contains("discord") -> Color.parseColor("#7C4DFF") // Discord Purple
+            pkg.contains("twitter") || label.contains("twitter") || label == "x" -> Color.parseColor("#1DA1F2") // Twitter Blue
+            pkg.contains("facebook") || pkg.contains("orca") || label.contains("messenger") -> Color.parseColor("#0084FF") // Messenger Blue
+            pkg.contains("phone") || pkg.contains("dialer") || label.contains("phone") || label.contains("call") -> Color.parseColor("#00E676") // Phone Green
+            pkg.contains("spotify") || label.contains("spotify") -> Color.parseColor("#1ED760") // Spotify Green
+            pkg.contains("reddit") || label.contains("reddit") -> Color.parseColor("#FF4500") // Reddit Orange
+            pkg.contains("github") || label.contains("github") -> Color.parseColor("#E0E0E0") // GitHub White
+            pkg.contains("chrome") || label.contains("chrome") -> Color.parseColor("#FFCA28") // Chrome Yellow
+            else -> {
+                val palette = intArrayOf(
+                    Color.parseColor("#FF79C6"), // Neon Pink
+                    Color.parseColor("#BD93F9"), // Neon Purple
+                    Color.parseColor("#50FA7B"), // Mint Green
+                    Color.parseColor("#FFB86C"), // Amber Orange
+                    Color.parseColor("#8BE9FD"), // Electric Cyan
+                    Color.parseColor("#F1FA8C"), // Pastel Yellow
+                    Color.parseColor("#69F0AE"), // Spring Green
+                    Color.parseColor("#40C4FF"), // Light Blue
+                    Color.parseColor("#FF6E40"), // Deep Orange
+                    Color.parseColor("#B388FF"), // Lavender
+                    Color.parseColor("#EEFF41"), // Electric Lime
+                    Color.parseColor("#EA80FC")  // Orchid
+                )
+                val key = if (packageName.isNotBlank()) packageName else appLabel
+                val index = (key.hashCode().and(0x7FFFFFFF)) % palette.size
+                palette[index]
+            }
+        }
     }
 
     fun destroy() {
@@ -1159,11 +1289,8 @@ class TerminalCommandHandler(
                     callbacks.onAddLog(TerminalLogItem("No notifications captured yet.", TerminalItemType.OUTPUT))
                 } else {
                     callbacks.onAddLog(TerminalLogItem("── Notification History (${history.size}) ───────────", TerminalItemType.BANNER))
-                    val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
                     for (rec in history) {
-                        val tStr = timeFormat.format(Date(rec.time))
-                        val body = if (rec.title.isNotBlank()) "${rec.title}: ${rec.text}" else rec.text
-                        callbacks.onAddLog(TerminalLogItem("[$tStr 🔔 ${rec.appLabel}] $body", TerminalItemType.SUCCESS))
+                        callbacks.onAddLog(formatNotificationItem(rec.time, rec.appLabel, rec.packageName, rec.title, rec.text))
                     }
                     callbacks.onAddLog(TerminalLogItem("─────────────────────────────────────", TerminalItemType.BANNER))
                 }
@@ -1196,11 +1323,32 @@ class TerminalCommandHandler(
                 }
             }
             "test" -> {
-                val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                val now = System.currentTimeMillis()
                 callbacks.onAddLog(
-                    TerminalLogItem(
-                        "[$timeStr 🔔 WhatsApp] Naim: Hey baby! Terminal notifications are working smoothly!",
-                        TerminalItemType.SUCCESS
+                    formatNotificationItem(
+                        now,
+                        "WhatsApp",
+                        "com.whatsapp",
+                        "Naim",
+                        "Hey baby! Terminal notifications now have vibrant color effects!"
+                    )
+                )
+                callbacks.onAddLog(
+                    formatNotificationItem(
+                        now - 120_000,
+                        "YouTube",
+                        "com.google.android.youtube",
+                        "Cyberpunk Studio",
+                        "Retro Synthwave Beats - Live 24/7"
+                    )
+                )
+                callbacks.onAddLog(
+                    formatNotificationItem(
+                        now - 300_000,
+                        "Messages",
+                        "com.google.android.apps.messaging",
+                        "Google",
+                        "Your verification code is 482910"
                     )
                 )
             }

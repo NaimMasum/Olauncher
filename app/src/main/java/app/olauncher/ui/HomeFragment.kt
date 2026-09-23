@@ -1110,26 +1110,15 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         time: Long
     ) {
         if (!prefs.terminalNotificationsEnabled) return
-        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-        val timeStr = timeFormat.format(Date(time))
-        val msg = buildString {
-            append("[$timeStr 🔔 $appLabel] ")
-            if (title.isNotBlank()) {
-                append(title)
-                if (text.isNotBlank()) append(": ")
-            }
-            if (text.isNotBlank()) {
-                append(text)
-            }
-        }
+        val rawKey = "$packageName:$title:$text"
         val now = System.currentTimeMillis()
-        if (msg == lastLoggedNotificationMsg && (now - lastLoggedNotificationTime) < 5_000L) {
+        if (rawKey == lastLoggedNotificationMsg && (now - lastLoggedNotificationTime) < 5_000L) {
             return
         }
-        lastLoggedNotificationMsg = msg
+        lastLoggedNotificationMsg = rawKey
         lastLoggedNotificationTime = now
 
-        terminalCommandHandler?.addNotificationLog(msg)
+        terminalCommandHandler?.addNotification(appLabel, packageName, title, text, time)
     }
 
     private fun refreshSuggestions() {

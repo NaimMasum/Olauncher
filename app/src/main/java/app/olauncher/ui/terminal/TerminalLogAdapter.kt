@@ -63,6 +63,7 @@ class TerminalLogAdapter(
                 TerminalItemType.APP_ENTRY -> theme.promptColor
                 TerminalItemType.SUCCESS -> theme.promptColor
                 TerminalItemType.OUTPUT -> theme.textColor
+                TerminalItemType.NOTIFICATION -> theme.textColor
             }
             binding.tvTerminalLog.setTextColor(color)
 
