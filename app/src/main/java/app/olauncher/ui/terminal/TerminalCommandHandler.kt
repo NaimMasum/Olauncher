@@ -39,7 +39,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
-import app.olauncher.ui.terminal.ssh.SshTerminalManager
 
 class TerminalCommandHandler(
     private val context: Context,
@@ -69,35 +68,6 @@ class TerminalCommandHandler(
     private val shellExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var currentProcess: Process? = null
-    private val termuxBridge = TermuxBridge(context)
-
-    val sshTerminalManager: SshTerminalManager by lazy {
-        SshTerminalManager(
-            prefs = prefs,
-            callbacks = object : SshTerminalManager.Callbacks {
-                override fun onOutput(line: String, type: TerminalItemType) {
-                    callbacks.onAddLog(TerminalLogItem(line, type))
-                }
-
-                override fun onConnected() {
-                    callbacks.onRunningStateChanged(false)
-                }
-
-                override fun onDisconnected() {
-                    callbacks.onRunningStateChanged(false)
-                }
-
-                override fun onError(message: String) {
-                    callbacks.onAddLog(TerminalLogItem(message, TerminalItemType.ERROR))
-                    callbacks.onRunningStateChanged(false)
-                }
-
-                override fun onStatusChanged(statusText: String) {
-                    // Update prompt if needed
-                }
-            }
-        )
-    }
 
     private fun getDefaultDirectory(): File {
         val home = File(context.filesDir, "home")
@@ -126,10 +96,9 @@ class TerminalCommandHandler(
         val theme = TerminalTheme.fromId(prefs.terminalTheme)
         val ssb = SpannableStringBuilder()
 
-        val isSsh = sshTerminalManager.isConnected
-        val userPart = if (isSsh) "ssh:termux@" else "naim@android:"
-        val pathPart = if (isSsh) "~" else getDisplayPath()
-        val symbolPart = if (isSsh) "# " else "$ "
+        val userPart = "naim@android:"
+        val pathPart = getDisplayPath()
+        val symbolPart = "$ "
 
         val startUser = ssb.length
         ssb.append(userPart)
@@ -165,20 +134,13 @@ class TerminalCommandHandler(
         val banner = mutableListOf<TerminalLogItem>()
         banner.add(TerminalLogItem("==========================================", TerminalItemType.BANNER))
         banner.add(TerminalLogItem("Welcome Naim", TerminalItemType.SUCCESS))
-        banner.add(TerminalLogItem("term_lunch Linux CLI (Termux Engine)", TerminalItemType.BANNER))
+        banner.add(TerminalLogItem("term_lunch Linux Terminal", TerminalItemType.BANNER))
         banner.add(TerminalLogItem("Type 'help' for commands, type app name, or run shell tools.", TerminalItemType.OUTPUT))
 
         val batteryLevel = getBatteryPercentage()
-        val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
         val appsCount = callbacks.getInstalledApps().size
-        val termuxConnected = termuxBridge.isTermuxInstalled()
-        val engineStr = if (termuxConnected) {
-            if (prefs.terminalTermuxMode) "Engine: Termux IPC (active)" else "Engine: Android sh (Termux ready)"
-        } else {
-            "Engine: Android sh"
-        }
         banner.add(TerminalLogItem("Dir: ${getDisplayPath()} | Battery: $batteryLevel% | Apps: $appsCount", TerminalItemType.BANNER))
-        banner.add(TerminalLogItem(engineStr, TerminalItemType.BANNER))
+        banner.add(TerminalLogItem("Engine: Android Native Shell (/system/bin/sh)", TerminalItemType.BANNER))
         banner.add(TerminalLogItem("------------------------------------------", TerminalItemType.BANNER))
         return banner
     }
@@ -205,10 +167,7 @@ class TerminalCommandHandler(
     }
 
     fun sendCtrlC() {
-        if (sshTerminalManager.isConnected) {
-            sshTerminalManager.sendCtrlC()
-            callbacks.onAddLog(TerminalLogItem("^C", TerminalItemType.OUTPUT))
-        } else if (currentProcess != null) {
+        if (currentProcess != null) {
             try {
                 currentProcess?.destroyForcibly()
                 callbacks.onAddLog(TerminalLogItem("^C", TerminalItemType.ERROR))
@@ -227,9 +186,6 @@ class TerminalCommandHandler(
     }
 
     fun destroy() {
-        if (sshTerminalManager.isConnected) {
-            sshTerminalManager.disconnect()
-        }
         currentProcess?.destroyForcibly()
         currentProcess = null
     }
@@ -256,37 +212,6 @@ class TerminalCommandHandler(
 
         val command = tokens[0].lowercase()
         val args = if (tokens.size > 1) tokens.subList(1, tokens.size) else emptyList()
-
-        // If SSH session is active, prioritize SSH routing unless user issues local launcher command
-        if (sshTerminalManager.isConnected) {
-            when (command) {
-                "exit", "logout" -> {
-                    sshTerminalManager.disconnect()
-                    return
-                }
-                "ssh" -> {
-                    handleSshCommand(args)
-                    return
-                }
-                "clear", "cls" -> {
-                    callbacks.onClearLogs()
-                    return
-                }
-                "settings" -> {
-                    callbacks.onOpenSettings()
-                    return
-                }
-                "mode" -> {
-                    callbacks.onSwitchLauncherMode(false)
-                    return
-                }
-                else -> {
-                    // Send command directly over live SSH session to Termux!
-                    sshTerminalManager.sendCommand(resolvedInput)
-                    return
-                }
-            }
-        }
 
         when (command) {
             "help", "?" -> showHelp()
@@ -363,7 +288,6 @@ class TerminalCommandHandler(
             "ping" -> handlePing(args)
             "net", "internet", "ip" -> handleNetStatus()
             "curl", "fetch" -> handleCurl(args)
-            "termux" -> handleTermuxCommand(args, resolvedInput)
             "call", "dial" -> {
                 val number = args.joinToString(" ").trim()
                 handleCall(number)
@@ -373,9 +297,6 @@ class TerminalCommandHandler(
             }
             "chrome" -> {
                 handleChrome(args)
-            }
-            "ssh" -> {
-                handleSshCommand(args)
             }
             else -> {
                 // If it starts with ! (e.g. !g query), treat as duckduckgo or web search
@@ -393,61 +314,12 @@ class TerminalCommandHandler(
                     return
                 }
 
-                // Check for interactive Fullscreen TUI commands (nano, vi, htop, etc.)
-                if (isInteractiveTuiCommand(command)) {
-                    if (sshTerminalManager.isConnected) {
-                        sshTerminalManager.sendCommand(resolvedInput)
-                    } else {
-                        handleInteractiveCommandNotice(command, resolvedInput)
-                    }
-                    return
-                }
-
-                // Run via Termux IPC if Termux mode is enabled or if command is Termux-specific (like pkg, apt)
-                if ((prefs.terminalTermuxMode || isTermuxSpecificCommand(command)) && termuxBridge.isTermuxInstalled()) {
-                    executeTermuxCommand(resolvedInput)
-                } else {
-                    // Run as real Linux shell process!
-                    executeShellCommand(resolvedInput)
-                }
+                // Run as real native Linux shell process!
+                executeShellCommand(resolvedInput)
             }
         }
     }
 
-    private fun isInteractiveTuiCommand(cmd: String): Boolean {
-        val interactive = setOf(
-            "nano", "vi", "vim", "nvim", "emacs", "htop", "top", "less", "more", "tmux", "screen"
-        )
-        return interactive.contains(cmd)
-    }
-
-    private fun handleInteractiveCommandNotice(cmd: String, fullInput: String) {
-        callbacks.onAddLog(
-            TerminalLogItem(
-                "'$cmd' is an interactive visual editor/TUI program.\n" +
-                "In pseudo-terminal mode, standard output is a piped line stream, not a terminal PTY device (tcgetattr/isatty=0).\n\n" +
-                "Solution 1 (Full Interactive SSH in Olauncher):\n" +
-                "  Connect to Termux OpenSSH server with a live PTY:\n" +
-                "    ssh connect\n" +
-                "  Then run '$fullInput' seamlessly!\n\n" +
-                "Solution 2 (Open in Termux app):\n" +
-                "  Launch Termux directly: 'termux open'\n\n" +
-                "Tip (Quick text editing without TUI):\n" +
-                "  echo \"text\" >> file.txt\n" +
-                "  cat file.txt",
-                TerminalItemType.ERROR
-            )
-        )
-    }
-
-    private fun isTermuxSpecificCommand(cmd: String): Boolean {
-        val termuxCommands = setOf(
-            "pkg", "apt", "apt-get", "apt-cache", "apt-config", "apt-mark",
-            "dpkg", "dpkg-deb", "dpkg-query", "termux-info", "termux-open",
-            "termux-reload-settings", "termux-setup-storage", "termux-wake-lock", "termux-wake-unlock"
-        )
-        return termuxCommands.contains(cmd)
-    }
 
     private fun isLikelyShellCommand(cmd: String): Boolean {
         val commonLinuxCommands = setOf(
@@ -523,129 +395,6 @@ class TerminalCommandHandler(
         }
     }
 
-    private fun handleTermuxCommand(args: List<String>, fullInput: String) {
-        if (args.isEmpty()) {
-            val installed = termuxBridge.isTermuxInstalled()
-            val mode = if (prefs.terminalTermuxMode) "ENABLED (all shell commands use Termux)" else "DISABLED (default /system/bin/sh)"
-            callbacks.onAddLog(
-                TerminalLogItem(
-                    "Termux Companion & IPC Integration:\n" +
-                    "  Status       : ${if (installed) "Connected / Installed" else "Not Installed"}\n" +
-                    "  Termux Mode  : $mode\n\n" +
-                    "Commands:\n" +
-                    "  termux <cmd>          : Run command inside Termux (e.g. termux pkg update)\n" +
-                    "  termux mode [on|off]  : Enable/disable routing all commands to Termux\n" +
-                    "  termux status         : Check detailed status\n" +
-                    "  termux open           : Open Termux GUI terminal\n" +
-                    "  termux setup          : Setup guide for external apps",
-                    TerminalItemType.OUTPUT
-                )
-            )
-            return
-        }
-
-        when (args[0].lowercase()) {
-            "status" -> {
-                val installed = termuxBridge.isTermuxInstalled()
-                callbacks.onAddLog(TerminalLogItem("Termux Status Check:", TerminalItemType.SUCCESS))
-                callbacks.onAddLog(TerminalLogItem("  Package (com.termux) : ${if (installed) "Installed (OK)" else "Not Found"}", TerminalItemType.OUTPUT))
-                callbacks.onAddLog(TerminalLogItem("  Service Component    : com.termux/.app.RunCommandService", TerminalItemType.OUTPUT))
-                callbacks.onAddLog(TerminalLogItem("  Termux Mode Routing  : ${if (prefs.terminalTermuxMode) "ON" else "OFF"}", TerminalItemType.OUTPUT))
-                callbacks.onAddLog(TerminalLogItem("  Working Directory    : ${currentWorkingDir.absolutePath}", TerminalItemType.OUTPUT))
-            }
-            "mode" -> {
-                if (args.size < 2) {
-                    val current = if (prefs.terminalTermuxMode) "ON" else "OFF"
-                    callbacks.onAddLog(TerminalLogItem("Termux mode is currently $current. Use 'termux mode on' or 'termux mode off'.", TerminalItemType.OUTPUT))
-                    return
-                }
-                when (args[1].lowercase()) {
-                    "on", "enable", "1", "true" -> {
-                        if (!termuxBridge.isTermuxInstalled()) {
-                            callbacks.onAddLog(TerminalLogItem("Warning: Termux is not currently installed. Commands will fall back to local shell until Termux is installed.", TerminalItemType.ERROR))
-                        }
-                        prefs.terminalTermuxMode = true
-                        callbacks.onAddLog(TerminalLogItem("Termux mode ENABLED. Shell commands will now route through Termux engine.", TerminalItemType.SUCCESS))
-                    }
-                    "off", "disable", "0", "false" -> {
-                        prefs.terminalTermuxMode = false
-                        callbacks.onAddLog(TerminalLogItem("Termux mode DISABLED. Reverted to standard Android shell (/system/bin/sh).", TerminalItemType.SUCCESS))
-                    }
-                    else -> {
-                        callbacks.onAddLog(TerminalLogItem("Usage: termux mode [on|off]", TerminalItemType.ERROR))
-                    }
-                }
-            }
-            "open" -> {
-                if (termuxBridge.isTermuxInstalled()) {
-                    callbacks.onAddLog(TerminalLogItem("Launching Termux application...", TerminalItemType.SUCCESS))
-                    termuxBridge.openTermux()
-                } else {
-                    callbacks.onAddLog(TerminalLogItem("Termux is not installed on this device.", TerminalItemType.ERROR))
-                }
-            }
-            "setup" -> {
-                callbacks.onAddLog(
-                    TerminalLogItem(
-                        "Termux External App Execution Setup:\n" +
-                        "1. Open Termux app.\n" +
-                        "2. Run: echo 'allow-external-apps=true' >> ~/.termux/termux.properties\n" +
-                        "3. Run: termux-reload-settings\n" +
-                        "4. Grant background execution permissions if prompted.\n" +
-                        "5. Now commands run headless in Olauncher without opening Termux!",
-                        TerminalItemType.OUTPUT
-                    )
-                )
-            }
-            "repo" -> handleTermuxRepo(args)
-            else -> {
-                val cmdToRun = fullInput.trim().substringAfter("termux").trim()
-                if (cmdToRun.isEmpty()) {
-                    callbacks.onAddLog(TerminalLogItem("Usage: termux <cmd>", TerminalItemType.ERROR))
-                } else {
-                    executeTermuxCommand(cmdToRun)
-                }
-            }
-        }
-    }
-
-    private fun handleTermuxRepo(args: List<String>) {
-        if (!termuxBridge.isTermuxInstalled()) {
-            callbacks.onAddLog(TerminalLogItem("Termux is not installed.", TerminalItemType.ERROR))
-            return
-        }
-        val sub = if (args.size > 1) args[1].lowercase() else "status"
-        when (sub) {
-            "status" -> {
-                callbacks.onAddLog(TerminalLogItem("Checking Termux repository configuration...", TerminalItemType.OUTPUT))
-                executeTermuxCommand("cat /data/data/com.termux/files/usr/etc/apt/sources.list")
-            }
-            "fix", "reset", "default" -> {
-                callbacks.onAddLog(TerminalLogItem("Configuring verified Termux mirrors and updating repositories...", TerminalItemType.OUTPUT))
-                val fixScript = "mkdir -p /data/data/com.termux/files/usr/etc/apt /data/data/com.termux/files/usr/etc/termux; " +
-                        "echo 'deb https://packages.termux.dev/apt/termux-main stable main' > /data/data/com.termux/files/usr/etc/apt/sources.list; " +
-                        "echo 'deb https://packages-cf.termux.dev/apt/termux-main stable main' >> /data/data/com.termux/files/usr/etc/apt/sources.list; " +
-                        "echo 'deb https://grimler.se/termux/termux-main stable main' >> /data/data/com.termux/files/usr/etc/apt/sources.list; " +
-                        "rm -f /data/data/com.termux/files/usr/etc/termux/chosen_mirrors; " +
-                        "ln -s /data/data/com.termux/files/usr/etc/termux/mirrors/europe /data/data/com.termux/files/usr/etc/termux/chosen_mirrors 2>/dev/null; " +
-                        "echo 'Mirrors configured. Running pkg update...'; pkg update -y"
-                executeTermuxCommand(fixScript)
-            }
-            "cf", "cloudflare" -> {
-                callbacks.onAddLog(TerminalLogItem("Setting Cloudflare mirror...", TerminalItemType.OUTPUT))
-                val cfScript = "echo 'deb https://packages-cf.termux.dev/apt/termux-main stable main' > /data/data/com.termux/files/usr/etc/apt/sources.list; pkg update -y"
-                executeTermuxCommand(cfScript)
-            }
-            "grimler" -> {
-                callbacks.onAddLog(TerminalLogItem("Setting Grimler (EU) mirror...", TerminalItemType.OUTPUT))
-                val gScript = "echo 'deb https://grimler.se/termux/termux-main stable main' > /data/data/com.termux/files/usr/etc/apt/sources.list; pkg update -y"
-                executeTermuxCommand(gScript)
-            }
-            else -> {
-                callbacks.onAddLog(TerminalLogItem("Usage: termux repo [status|fix|cf|grimler]", TerminalItemType.ERROR))
-            }
-        }
-    }
 
     private fun handleCall(rawTarget: String) {
         val trimmed = rawTarget.trim()
@@ -823,95 +572,6 @@ class TerminalCommandHandler(
         }
     }
 
-    private fun handleSshCommand(args: List<String>) {
-        if (args.isEmpty()) {
-            val status = if (sshTerminalManager.isConnected) "CONNECTED" else "DISCONNECTED"
-            callbacks.onAddLog(
-                TerminalLogItem(
-                    "SSH Terminal to Termux ($status):\n" +
-                    "  Configured: ${prefs.terminalSshUser.ifBlank { "<no user>" }}@${prefs.terminalSshHost}:${prefs.terminalSshPort}\n\n" +
-                    "Commands:\n" +
-                    "  ssh connect [user] [pass] [host] [port] : Connect to SSH session\n" +
-                    "  ssh disconnect, ssh exit                : Terminate SSH session\n" +
-                    "  ssh status                              : Check SSH status\n" +
-                    "  ssh setup                               : How to start OpenSSH in Termux\n" +
-                    "  ssh config <user> <pass> [host] [port]  : Save default SSH credentials",
-                    TerminalItemType.OUTPUT
-                )
-            )
-            return
-        }
-
-        when (args[0].lowercase()) {
-            "connect" -> {
-                val user = args.getOrNull(1) ?: prefs.terminalSshUser.ifBlank { "u0_a0" }
-                val pass = args.getOrNull(2) ?: prefs.terminalSshPass
-                val host = args.getOrNull(3) ?: prefs.terminalSshHost.ifBlank { "127.0.0.1" }
-                val port = args.getOrNull(4)?.toIntOrNull() ?: prefs.terminalSshPort
-
-                if (args.size > 1) {
-                    prefs.terminalSshUser = user
-                    prefs.terminalSshPass = pass
-                    prefs.terminalSshHost = host
-                    prefs.terminalSshPort = port
-                }
-
-                callbacks.onRunningStateChanged(true)
-                sshTerminalManager.connect(host = host, port = port, user = user, password = pass)
-            }
-            "disconnect", "exit", "close", "stop" -> {
-                if (sshTerminalManager.isConnected) {
-                    sshTerminalManager.disconnect()
-                } else {
-                    callbacks.onAddLog(TerminalLogItem("SSH is not currently connected.", TerminalItemType.OUTPUT))
-                }
-            }
-            "status" -> {
-                val status = if (sshTerminalManager.isConnected) "CONNECTED (active shell session)" else "DISCONNECTED"
-                callbacks.onAddLog(TerminalLogItem("SSH Status: $status", TerminalItemType.SUCCESS))
-                callbacks.onAddLog(TerminalLogItem("Target: ${prefs.terminalSshUser.ifBlank { "u0_a0" }}@${prefs.terminalSshHost}:${prefs.terminalSshPort}", TerminalItemType.OUTPUT))
-            }
-            "config" -> {
-                if (args.size < 3) {
-                    callbacks.onAddLog(TerminalLogItem("Usage: ssh config <user> <password> [host] [port]", TerminalItemType.ERROR))
-                    return
-                }
-                prefs.terminalSshUser = args[1]
-                prefs.terminalSshPass = args[2]
-                if (args.size > 3) prefs.terminalSshHost = args[3]
-                if (args.size > 4) prefs.terminalSshPort = args[4].toIntOrNull() ?: 8022
-                callbacks.onAddLog(TerminalLogItem("Saved SSH config: ${prefs.terminalSshUser}@${prefs.terminalSshHost}:${prefs.terminalSshPort}", TerminalItemType.SUCCESS))
-            }
-            "setup" -> {
-                callbacks.onAddLog(
-                    TerminalLogItem(
-                        "--- Setting up OpenSSH in Termux ---\n" +
-                        "1. Open Termux and run:\n" +
-                        "     pkg install openssh\n" +
-                        "2. Set a password for your user:\n" +
-                        "     passwd\n" +
-                        "3. Find your Termux username:\n" +
-                        "     whoami   (e.g. u0_a245)\n" +
-                        "4. Start the SSH server in Termux:\n" +
-                        "     sshd\n" +
-                        "5. Now in Olauncher CLI, simply run:\n" +
-                        "     ssh connect <user> <password>\n" +
-                        "   (Example: ssh connect u0_a245 mypass)\n" +
-                        "You will have full interactive Termux shell right here!",
-                        TerminalItemType.OUTPUT
-                    )
-                )
-            }
-            else -> {
-                // If it's a sub-command and we are connected, forward it
-                if (sshTerminalManager.isConnected) {
-                    sshTerminalManager.sendCommand(args.joinToString(" "))
-                } else {
-                    callbacks.onAddLog(TerminalLogItem("Unknown SSH command '${args[0]}'. Use 'ssh' for help.", TerminalItemType.ERROR))
-                }
-            }
-        }
-    }
 
     private fun handlePing(args: List<String>) {
         if (args.isEmpty()) {
@@ -1141,46 +801,6 @@ class TerminalCommandHandler(
         }
     }
 
-    private fun executeTermuxCommand(cmd: String) {
-        if (!termuxBridge.isTermuxInstalled()) {
-            callbacks.onAddLog(TerminalLogItem("Termux is not installed. Falling back to local Android shell...", TerminalItemType.ERROR))
-            executeShellCommand(cmd)
-            return
-        }
-
-        callbacks.onRunningStateChanged(true)
-        callbacks.onAddLog(TerminalLogItem("[termux] $cmd", TerminalItemType.OUTPUT))
-
-        val dispatched = termuxBridge.execute(cmd, currentWorkingDir.absolutePath) { stdout, stderr, exitCode, errCode, errMsg ->
-            callbacks.onRunningStateChanged(false)
-            if (!stdout.isNullOrEmpty()) {
-                val lines = stdout.trimEnd().lines()
-                lines.forEach { line ->
-                    callbacks.onAddLog(TerminalLogItem(line, TerminalItemType.OUTPUT))
-                }
-            }
-            if (!stderr.isNullOrEmpty()) {
-                val lines = stderr.trimEnd().lines()
-                lines.forEach { line ->
-                    callbacks.onAddLog(TerminalLogItem(line, TerminalItemType.ERROR))
-                }
-            }
-            if (errCode != 0 && !errMsg.isNullOrEmpty()) {
-                callbacks.onAddLog(TerminalLogItem("[Termux Error] $errMsg", TerminalItemType.ERROR))
-                if (errMsg.contains("external", ignoreCase = true) || errMsg.contains("permission", ignoreCase = true)) {
-                    callbacks.onAddLog(TerminalLogItem("Hint: Run 'termux setup' to enable external apps execution.", TerminalItemType.OUTPUT))
-                }
-            } else if (exitCode != 0 && stdout.isNullOrEmpty() && stderr.isNullOrEmpty()) {
-                callbacks.onAddLog(TerminalLogItem("Termux exited with code $exitCode", TerminalItemType.ERROR))
-            }
-        }
-
-        if (!dispatched) {
-            callbacks.onRunningStateChanged(false)
-            callbacks.onAddLog(TerminalLogItem("Termux service unreachable. Falling back to local shell...", TerminalItemType.ERROR))
-            executeShellCommand(cmd)
-        }
-    }
 
     private fun handleCd(args: List<String>) {
         val targetPath = if (args.isEmpty() || args[0] == "~") {
@@ -1227,7 +847,7 @@ class TerminalCommandHandler(
 
     private fun showHelp() {
         val helpLines = listOf(
-            "Terminal Launcher & Shell (Termux CLI):",
+            "Terminal Launcher & Linux Shell (/system/bin/sh):",
             "  <app_name>      : Launch app directly (e.g. 'chrome', 'camera')",
             "  apps [query]    : List installed applications (tap to open)",
             "  cd <path>       : Change working directory (~, .., /sdcard)",
@@ -1250,24 +870,10 @@ class TerminalCommandHandler(
             "  whatsapp msg <num> <text> : Send message directly via WhatsApp",
             "  chrome [url]    : Open URL in Chrome (e.g. 'chrome open facebook.com')",
             "",
-            "SSH Client to Termux (Interactive Linux Session):",
-            "  ssh             : Display SSH client status & menu",
-            "  ssh connect     : Connect to Termux SSH server (127.0.0.1:8022)",
-            "  ssh disconnect  : Disconnect active SSH session",
-            "  ssh setup       : Setup guide to enable sshd in Termux",
-            "",
             "Networking & Internet:",
             "  ping <host> [n] : Ping host with latency metrics (e.g. 'ping google.com')",
             "  net, ip         : Inspect network connection, Wi-Fi/Cellular, DNS & status",
             "  curl <url> [-I] : Fetch HTTP/HTTPS headers or web content",
-            "",
-            "Termux Companion & Package Management:",
-            "  pkg <command>   : Package manager (install, update, search, list-installed)",
-            "  termux repo fix : Fix/reset Termux mirrors to stable repositories",
-            "  termux mode     : Toggle auto-routing all shell commands to Termux",
-            "  termux status   : Check Termux connection & execution status",
-            "  termux open     : Launch Termux app interface",
-            "  termux setup    : Guide to configure external app execution",
             "",
             "Linux Shell Builtins & Utilities (/system/bin/sh):",
             "  ls, cat, mkdir, rm, touch, df, ps, top, grep, echo, |",
@@ -1897,9 +1503,9 @@ class TerminalCommandHandler(
         val list = mutableListOf<TerminalSuggestion>()
 
         val commands = listOf(
-            "help", "apps", "ssh", "call", "whatsapp", "chrome",
+            "help", "apps", "call", "whatsapp", "chrome",
             "cd", "pwd", "ls", "open", "info", "uninstall",
-            "history", "pin", "unpin", "theme", "termux", "battery", "notif", "time", "date",
+            "history", "pin", "unpin", "theme", "battery", "notif", "time", "date",
             "device", "alias", "search", "settings", "mode", "clear"
         )
 
@@ -1927,7 +1533,6 @@ class TerminalCommandHandler(
 
             list.add(TerminalSuggestion("help", "help", executeImmediately = true))
             list.add(TerminalSuggestion("apps", "apps", executeImmediately = true))
-            list.add(TerminalSuggestion("termux", "termux", executeImmediately = true))
             list.add(TerminalSuggestion("ls", "ls", executeImmediately = true))
             list.add(TerminalSuggestion("pwd", "pwd", executeImmediately = true))
             list.add(TerminalSuggestion("battery", "battery", executeImmediately = true))
@@ -1997,47 +1602,6 @@ class TerminalCommandHandler(
 
         if (q.startsWith("call ") || q.startsWith("dial ")) {
             // Suggest phone dialer or popular numbers
-            return list
-        }
-
-        if (q.startsWith("ssh")) {
-            val sub = q.removePrefix("ssh").trim()
-            val sshSubCommands = listOf(
-                "connect", "disconnect", "status", "setup", "config "
-            )
-            for (sc in sshSubCommands) {
-                if (sub.isEmpty() || sc.startsWith(sub)) {
-                    val isAction = sc.endsWith(" ")
-                    list.add(
-                        TerminalSuggestion(
-                            displayText = "ssh $sc",
-                            commandToFill = "ssh $sc",
-                            executeImmediately = !isAction
-                        )
-                    )
-                }
-            }
-            return list
-        }
-
-        if (q.startsWith("termux")) {
-            val sub = q.removePrefix("termux").trim()
-            val termuxSubCommands = listOf(
-                "status", "mode on", "mode off", "open", "setup",
-                "pkg update", "pkg install ", "ls -la", "python "
-            )
-            for (sc in termuxSubCommands) {
-                if (sub.isEmpty() || sc.startsWith(sub)) {
-                    val isAction = sc.endsWith(" ")
-                    list.add(
-                        TerminalSuggestion(
-                            displayText = "termux $sc",
-                            commandToFill = "termux $sc",
-                            executeImmediately = !isAction
-                        )
-                    )
-                }
-            }
             return list
         }
 

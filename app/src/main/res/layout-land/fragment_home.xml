@@ -270,18 +270,6 @@
             </LinearLayout>
 
             <TextView
-                android:id="@+id/btnTogglePtyMode"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_alignParentStart="true"
-                android:layout_centerVertical="true"
-                android:fontFamily="monospace"
-                android:padding="6dp"
-                android:text="TERMUX"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
-            <TextView
                 android:id="@+id/btnToggleMode"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -294,22 +282,6 @@
                 android:textStyle="bold" />
 
         </RelativeLayout>
-
-        <!-- Real Interactive Linux / Termux Terminal View -->
-        <FrameLayout
-            android:id="@+id/terminalViewContainer"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:visibility="gone">
-
-            <com.termux.view.TerminalView
-                android:id="@+id/terminalView"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:focusable="true"
-                android:focusableInTouchMode="true" />
-        </FrameLayout>
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvTerminalLog"

@@ -8,7 +8,7 @@
     android:padding="2dp"
     android:splitMotionEvents="true">
 
-    <!-- Termux Accessory Row: ESC | ^C | TAB | ▲ | ▼ | ◀ | ▶ | | | ~ -->
+    <!-- Terminal Accessory Row: ESC | ^C | TAB | ▲ | ▼ | ◀ | ▶ | | | ~ -->
     <LinearLayout
         android:id="@+id/llAccessoryRow"
         android:layout_width="match_parent"

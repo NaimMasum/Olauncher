@@ -46,17 +46,11 @@ class Prefs(context: Context) {
     // private val HOME_BUTTON_SHOW_RECENTS = "HOME_BUTTON_SHOW_RECENTS"
 
     private val TERMINAL_MODE = "TERMINAL_MODE"
-    private val TERMINAL_USE_PTY = "TERMINAL_USE_PTY"
     private val TERMINAL_THEME = "TERMINAL_THEME"
     private val TERMINAL_PROMPT = "TERMINAL_PROMPT"
     private val TERMINAL_ALIASES = "TERMINAL_ALIASES"
     private val TERMINAL_KEYBOARD_VISIBLE = "TERMINAL_KEYBOARD_VISIBLE"
     private val TERMINAL_PINNED_APPS = "TERMINAL_PINNED_APPS"
-    private val TERMINAL_TERMUX_MODE = "TERMINAL_TERMUX_MODE"
-    private val TERMINAL_SSH_HOST = "TERMINAL_SSH_HOST"
-    private val TERMINAL_SSH_PORT = "TERMINAL_SSH_PORT"
-    private val TERMINAL_SSH_USER = "TERMINAL_SSH_USER"
-    private val TERMINAL_SSH_PASS = "TERMINAL_SSH_PASS"
     private val TERMINAL_NOTIFICATIONS_ENABLED = "TERMINAL_NOTIFICATIONS_ENABLED"
     private val TERMINAL_NOTIFICATION_APPS = "TERMINAL_NOTIFICATION_APPS"
 
@@ -684,26 +678,6 @@ class Prefs(context: Context) {
         get() = prefs.getString(TERMINAL_PINNED_APPS, "") ?: ""
         set(value) = prefs.edit { putString(TERMINAL_PINNED_APPS, value) }
 
-    var terminalTermuxMode: Boolean
-        get() = prefs.getBoolean(TERMINAL_TERMUX_MODE, false)
-        set(value) = prefs.edit { putBoolean(TERMINAL_TERMUX_MODE, value) }
-
-    var terminalSshHost: String
-        get() = prefs.getString(TERMINAL_SSH_HOST, "127.0.0.1") ?: "127.0.0.1"
-        set(value) = prefs.edit { putString(TERMINAL_SSH_HOST, value) }
-
-    var terminalSshPort: Int
-        get() = prefs.getInt(TERMINAL_SSH_PORT, 8022)
-        set(value) = prefs.edit { putInt(TERMINAL_SSH_PORT, value) }
-
-    var terminalSshUser: String
-        get() = prefs.getString(TERMINAL_SSH_USER, "") ?: ""
-        set(value) = prefs.edit { putString(TERMINAL_SSH_USER, value) }
-
-    var terminalSshPass: String
-        get() = prefs.getString(TERMINAL_SSH_PASS, "") ?: ""
-        set(value) = prefs.edit { putString(TERMINAL_SSH_PASS, value) }
-
     var terminalNotificationsEnabled: Boolean
         get() = prefs.getBoolean(TERMINAL_NOTIFICATIONS_ENABLED, false)
         set(value) = prefs.edit { putBoolean(TERMINAL_NOTIFICATIONS_ENABLED, value) }
@@ -711,8 +685,4 @@ class Prefs(context: Context) {
     var terminalNotificationApps: Set<String>
         get() = prefs.getStringSet(TERMINAL_NOTIFICATION_APPS, emptySet()) ?: emptySet()
         set(value) = prefs.edit { putStringSet(TERMINAL_NOTIFICATION_APPS, value) }
-
-    var terminalUsePty: Boolean
-        get() = prefs.getBoolean(TERMINAL_USE_PTY, true)
-        set(value) = prefs.edit { putBoolean(TERMINAL_USE_PTY, value) }
 }
