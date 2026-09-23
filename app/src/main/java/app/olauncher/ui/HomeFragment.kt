@@ -81,6 +81,8 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private var installedAppsList: List<AppModel.App> = emptyList()
     private var isTerminalInitialized = false
     private var isReceiverRegistered = false
+    private var lastLoggedNotificationMsg: String? = null
+    private var lastLoggedNotificationTime: Long = 0L
 
     private val terminalBroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -1101,6 +1103,13 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
                 append(text)
             }
         }
+        val now = System.currentTimeMillis()
+        if (msg == lastLoggedNotificationMsg && (now - lastLoggedNotificationTime) < 5_000L) {
+            return
+        }
+        lastLoggedNotificationMsg = msg
+        lastLoggedNotificationTime = now
+
         terminalCommandHandler?.addNotificationLog(msg)
     }
 

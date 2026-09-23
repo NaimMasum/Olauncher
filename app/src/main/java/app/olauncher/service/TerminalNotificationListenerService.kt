@@ -19,8 +19,8 @@ class TerminalNotificationListenerService : NotificationListenerService() {
         var liveNotificationCallback: ((appLabel: String, packageName: String, title: String, text: String, time: Long) -> Unit)? = null
     }
 
-    private var lastKey: String = ""
-    private var lastPostTime: Long = 0L
+    // Cache of recent notification signatures -> timestamp to prevent duplicates across updates
+    private val recentNotifications = mutableMapOf<String, Long>()
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         super.onNotificationPosted(sbn)
@@ -32,16 +32,25 @@ class TerminalNotificationListenerService : NotificationListenerService() {
         val packageName = sbn.packageName ?: return
         if (packageName == applicationContext.packageName) return
 
-        // Filter ongoing system/foreground service notifications (e.g. music player progress, step counter)
-        if (sbn.isOngoing) return
+        val notification = sbn.notification ?: return
 
-        // Filter by selected apps if user configured an app allowlist
+        // 1. Filter ongoing notifications (persistent background services, music, pedometer, etc.)
+        if (sbn.isOngoing || (notification.flags and Notification.FLAG_ONGOING_EVENT) != 0) {
+            return
+        }
+
+        // 2. Filter Android notification group summaries (e.g. "2 new messages" or account headers)
+        // Group summaries duplicate the actual message notifications
+        if ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
+            return
+        }
+
+        // 3. Filter by selected apps if user configured an app allowlist
         val allowedApps = prefs.terminalNotificationApps
         if (allowedApps.isNotEmpty() && !allowedApps.contains(packageName)) {
             return
         }
 
-        val notification = sbn.notification ?: return
         val extras = notification.extras ?: return
 
         val title = (extras.getCharSequence(Notification.EXTRA_TITLE)
@@ -53,14 +62,18 @@ class TerminalNotificationListenerService : NotificationListenerService() {
 
         if (title.isBlank() && text.isBlank()) return
 
-        // Deduplicate duplicate notifications within 2 seconds
-        val key = "$packageName|$title|$text"
         val now = System.currentTimeMillis()
-        if (key == lastKey && (now - lastPostTime) < 2000L) {
+
+        // 4. Robust content deduplication: clean up entries older than 3 minutes
+        recentNotifications.entries.removeIf { now - it.value > 180_000L }
+
+        // Deduplicate notifications with identical package, title, and body within 60 seconds
+        val contentSignature = "$packageName|$title|$text"
+        val lastSeen = recentNotifications[contentSignature]
+        if (lastSeen != null && (now - lastSeen) < 60_000L) {
             return
         }
-        lastKey = key
-        lastPostTime = now
+        recentNotifications[contentSignature] = now
 
         val pm = packageManager
         val appLabel = try {
@@ -72,19 +85,21 @@ class TerminalNotificationListenerService : NotificationListenerService() {
 
         val postTime = if (sbn.postTime > 0) sbn.postTime else now
 
-        // 1. Direct in-memory callback for zero-latency delivery if launcher is active
-        liveNotificationCallback?.invoke(appLabel, packageName, title, text, postTime)
-
-        // 2. Broadcast for receiver delivery
-        val intent = Intent(ACTION_TERMINAL_NOTIFICATION).apply {
-            setPackage(applicationContext.packageName)
-            putExtra(EXTRA_APP_LABEL, appLabel)
-            putExtra(EXTRA_PACKAGE_NAME, packageName)
-            putExtra(EXTRA_TITLE, title)
-            putExtra(EXTRA_TEXT, text)
-            putExtra(EXTRA_POST_TIME, postTime)
+        // 5. Send to live callback if launcher is active, OR send broadcast if in background (never both)
+        val callback = liveNotificationCallback
+        if (callback != null) {
+            callback.invoke(appLabel, packageName, title, text, postTime)
+        } else {
+            val intent = Intent(ACTION_TERMINAL_NOTIFICATION).apply {
+                setPackage(applicationContext.packageName)
+                putExtra(EXTRA_APP_LABEL, appLabel)
+                putExtra(EXTRA_PACKAGE_NAME, packageName)
+                putExtra(EXTRA_TITLE, title)
+                putExtra(EXTRA_TEXT, text)
+                putExtra(EXTRA_POST_TIME, postTime)
+            }
+            sendBroadcast(intent)
         }
-        sendBroadcast(intent)
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
