@@ -45,6 +45,14 @@ class Prefs(context: Context) {
     // Home button for recents feature disabled
     // private val HOME_BUTTON_SHOW_RECENTS = "HOME_BUTTON_SHOW_RECENTS"
 
+    private val TERMINAL_MODE = "TERMINAL_MODE"
+    private val TERMINAL_THEME = "TERMINAL_THEME"
+    private val TERMINAL_PROMPT = "TERMINAL_PROMPT"
+    private val TERMINAL_ALIASES = "TERMINAL_ALIASES"
+    private val TERMINAL_KEYBOARD_VISIBLE = "TERMINAL_KEYBOARD_VISIBLE"
+    private val TERMINAL_PINNED_APPS = "TERMINAL_PINNED_APPS"
+    private val TERMINAL_TERMUX_MODE = "TERMINAL_TERMUX_MODE"
+
     private val APP_NAME_1 = "APP_NAME_1"
     private val APP_NAME_2 = "APP_NAME_2"
     private val APP_NAME_3 = "APP_NAME_3"
@@ -644,4 +652,32 @@ class Prefs(context: Context) {
     fun getAppRenameLabel(appPackage: String): String = prefs.getString(appPackage, "").toString()
 
     fun setAppRenameLabel(appPackage: String, renameLabel: String) = prefs.edit { putString(appPackage, renameLabel) }
+
+    var terminalMode: Boolean
+        get() = prefs.getBoolean(TERMINAL_MODE, true)
+        set(value) = prefs.edit { putBoolean(TERMINAL_MODE, value) }
+
+    var terminalTheme: String
+        get() = prefs.getString(TERMINAL_THEME, "green") ?: "green"
+        set(value) = prefs.edit { putString(TERMINAL_THEME, value) }
+
+    var terminalPrompt: String
+        get() = prefs.getString(TERMINAL_PROMPT, "user@android:~$ ") ?: "user@android:~$ "
+        set(value) = prefs.edit { putString(TERMINAL_PROMPT, value) }
+
+    var terminalAliases: String
+        get() = prefs.getString(TERMINAL_ALIASES, "") ?: ""
+        set(value) = prefs.edit { putString(TERMINAL_ALIASES, value) }
+
+    var terminalKeyboardVisible: Boolean
+        get() = prefs.getBoolean(TERMINAL_KEYBOARD_VISIBLE, true)
+        set(value) = prefs.edit { putBoolean(TERMINAL_KEYBOARD_VISIBLE, value) }
+
+    var terminalPinnedApps: String
+        get() = prefs.getString(TERMINAL_PINNED_APPS, "") ?: ""
+        set(value) = prefs.edit { putString(TERMINAL_PINNED_APPS, value) }
+
+    var terminalTermuxMode: Boolean
+        get() = prefs.getBoolean(TERMINAL_TERMUX_MODE, false)
+        set(value) = prefs.edit { putBoolean(TERMINAL_TERMUX_MODE, value) }
 }

@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/llKeyboardRoot"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="2dp"
+    android:orientation="vertical"
+    android:padding="2dp">
+
+    <!-- Termux Accessory Row: ESC | ^C | TAB | ▲ | ▼ | ◀ | ▶ | | | ~ -->
+    <LinearLayout
+        android:id="@+id/llAccessoryRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="1dp"
+        android:orientation="horizontal">
+
+        <TextView android:id="@+id/key_esc" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="11sp" android:text="ESC" />
+        <TextView android:id="@+id/key_ctrl_c" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="11sp" android:text="^C" />
+        <TextView android:id="@+id/key_tab" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="11sp" android:text="TAB" />
+        <TextView android:id="@+id/key_up" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="12sp" android:text="▲" />
+        <TextView android:id="@+id/key_down" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="12sp" android:text="▼" />
+        <TextView android:id="@+id/key_left" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="12sp" android:text="◀" />
+        <TextView android:id="@+id/key_right" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="12sp" android:text="▶" />
+        <TextView android:id="@+id/key_pipe" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="13sp" android:text="|" />
+        <TextView android:id="@+id/key_tilde" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="13sp" android:text="~" />
+    </LinearLayout>
+
+    <!-- Row 1: Numbers / Row 1 symbols -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <TextView android:id="@+id/key_1" style="@style/TerminalKey" android:text="1" />
+        <TextView android:id="@+id/key_2" style="@style/TerminalKey" android:text="2" />
+        <TextView android:id="@+id/key_3" style="@style/TerminalKey" android:text="3" />
+        <TextView android:id="@+id/key_4" style="@style/TerminalKey" android:text="4" />
+        <TextView android:id="@+id/key_5" style="@style/TerminalKey" android:text="5" />
+        <TextView android:id="@+id/key_6" style="@style/TerminalKey" android:text="6" />
+        <TextView android:id="@+id/key_7" style="@style/TerminalKey" android:text="7" />
+        <TextView android:id="@+id/key_8" style="@style/TerminalKey" android:text="8" />
+        <TextView android:id="@+id/key_9" style="@style/TerminalKey" android:text="9" />
+        <TextView android:id="@+id/key_0" style="@style/TerminalKey" android:text="0" />
+    </LinearLayout>
+
+    <!-- Row 2: QWERTYUIOP / Row 2 symbols -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <TextView android:id="@+id/key_q" style="@style/TerminalKey" android:text="q" />
+        <TextView android:id="@+id/key_w" style="@style/TerminalKey" android:text="w" />
+        <TextView android:id="@+id/key_e" style="@style/TerminalKey" android:text="e" />
+        <TextView android:id="@+id/key_r" style="@style/TerminalKey" android:text="r" />
+        <TextView android:id="@+id/key_t" style="@style/TerminalKey" android:text="t" />
+        <TextView android:id="@+id/key_y" style="@style/TerminalKey" android:text="y" />
+        <TextView android:id="@+id/key_u" style="@style/TerminalKey" android:text="u" />
+        <TextView android:id="@+id/key_i" style="@style/TerminalKey" android:text="i" />
+        <TextView android:id="@+id/key_o" style="@style/TerminalKey" android:text="o" />
+        <TextView android:id="@+id/key_p" style="@style/TerminalKey" android:text="p" />
+    </LinearLayout>
+
+    <!-- Row 3: ASDFGHJKL / Row 3 symbols -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="0.5" />
+        <TextView android:id="@+id/key_a" style="@style/TerminalKey" android:text="a" />
+        <TextView android:id="@+id/key_s" style="@style/TerminalKey" android:text="s" />
+        <TextView android:id="@+id/key_d" style="@style/TerminalKey" android:text="d" />
+        <TextView android:id="@+id/key_f" style="@style/TerminalKey" android:text="f" />
+        <TextView android:id="@+id/key_g" style="@style/TerminalKey" android:text="g" />
+        <TextView android:id="@+id/key_h" style="@style/TerminalKey" android:text="h" />
+        <TextView android:id="@+id/key_j" style="@style/TerminalKey" android:text="j" />
+        <TextView android:id="@+id/key_k" style="@style/TerminalKey" android:text="k" />
+        <TextView android:id="@+id/key_l" style="@style/TerminalKey" android:text="l" />
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="0.5" />
+    </LinearLayout>
+
+    <!-- Row 4: SHIFT | ZXCVBNM | BACKSPACE -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/key_shift"
+            style="@style/TerminalKey"
+            android:layout_weight="1.4"
+            android:text="⇧"
+            android:textSize="15sp" />
+        <TextView android:id="@+id/key_z" style="@style/TerminalKey" android:text="z" />
+        <TextView android:id="@+id/key_x" style="@style/TerminalKey" android:text="x" />
+        <TextView android:id="@+id/key_c" style="@style/TerminalKey" android:text="c" />
+        <TextView android:id="@+id/key_v" style="@style/TerminalKey" android:text="v" />
+        <TextView android:id="@+id/key_b" style="@style/TerminalKey" android:text="b" />
+        <TextView android:id="@+id/key_n" style="@style/TerminalKey" android:text="n" />
+        <TextView android:id="@+id/key_m" style="@style/TerminalKey" android:text="m" />
+        <TextView
+            android:id="@+id/key_backspace"
+            style="@style/TerminalKey"
+            android:layout_weight="1.6"
+            android:text="⌫"
+            android:textSize="16sp" />
+    </LinearLayout>
+
+    <!-- Row 5: ?123 | APPS | / | SPACE | - | . | ENTER ↵ -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/key_sym"
+            style="@style/TerminalKey"
+            android:layout_weight="1.3"
+            android:text="\?123"
+            android:textSize="11sp" />
+        <TextView
+            android:id="@+id/key_apps"
+            style="@style/TerminalKey"
+            android:layout_weight="1.2"
+            android:text="APPS"
+            android:textSize="11sp" />
+        <TextView
+            android:id="@+id/key_slash"
+            style="@style/TerminalKey"
+            android:layout_weight="0.9"
+            android:text="/" />
+        <TextView
+            android:id="@+id/key_space"
+            style="@style/TerminalKey"
+            android:layout_weight="3.2"
+            android:text="SPACE"
+            android:textSize="11sp" />
+        <TextView
+            android:id="@+id/key_dash"
+            style="@style/TerminalKey"
+            android:layout_weight="0.9"
+            android:text="-" />
+        <TextView
+            android:id="@+id/key_dot"
+            style="@style/TerminalKey"
+            android:layout_weight="0.9"
+            android:text="." />
+        <TextView
+            android:id="@+id/key_enter"
+            style="@style/TerminalKey"
+            android:layout_weight="1.6"
+            android:text="ENTER ↵"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+</LinearLayout>

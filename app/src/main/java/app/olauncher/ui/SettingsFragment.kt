@@ -14,6 +14,8 @@ import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import org.json.JSONArray
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.bundleOf
 import androidx.lifecycle.ViewModelProvider
@@ -21,6 +23,7 @@ import androidx.navigation.fragment.findNavController
 import app.olauncher.BuildConfig
 import app.olauncher.MainViewModel
 import app.olauncher.R
+import app.olauncher.data.AppModel
 import app.olauncher.data.Constants
 import app.olauncher.data.Prefs
 import app.olauncher.databinding.DialogTextSizeBinding
@@ -44,6 +47,7 @@ import app.olauncher.helper.showPopupMenu
 import app.olauncher.helper.showStatusBar
 import app.olauncher.helper.showToast
 import app.olauncher.listener.DeviceAdmin
+import app.olauncher.ui.terminal.TerminalTheme
 
 class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListener {
 
@@ -75,6 +79,8 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         checkAdminPermission()
 
         binding.homeAppsNum.text = prefs.homeAppsNum.toString()
+        populateLauncherMode()
+        populateTerminalTheme()
         populateProMessage()
         populateKeyboardText()
         populateScreenTimeOnOff()
@@ -99,6 +105,9 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
 
     override fun onClick(view: View) {
         when (view.id) {
+            R.id.tvLauncherMode -> toggleLauncherMode()
+            R.id.tvTerminalTheme -> showTerminalThemeMenu(view)
+            R.id.tvTerminalPinnedApps -> showManagePinnedAppsDialog()
             R.id.olauncherHiddenApps -> showHiddenApps()
             R.id.moreFeatures -> viewModel.showDialog.postValue(Constants.Dialog.PRO_MESSAGE)
             R.id.screenTimeOnOff -> viewModel.showDialog.postValue(Constants.Dialog.DIGITAL_WELLBEING)
@@ -182,6 +191,9 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         binding.appThemeText.setOnClickListener(this)
         binding.textSizeValue.setOnClickListener(this)
         binding.boldFont.setOnClickListener(this)
+        binding.tvLauncherMode.setOnClickListener(this)
+        binding.tvTerminalTheme.setOnClickListener(this)
+        binding.tvTerminalPinnedApps.setOnClickListener(this)
 
         binding.share.setOnClickListener(this)
         binding.rate.setOnClickListener(this)
@@ -357,6 +369,155 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
                 else -> R.string.off
             }
         )
+    }
+
+    private fun populateLauncherMode() {
+        binding.tvLauncherMode.text = if (prefs.terminalMode) {
+            getString(R.string.mode_terminal)
+        } else {
+            getString(R.string.mode_classic)
+        }
+        binding.flTerminalTheme.visibility = if (prefs.terminalMode) View.VISIBLE else View.GONE
+        binding.flTerminalPinnedApps.visibility = if (prefs.terminalMode) View.VISIBLE else View.GONE
+        populateTerminalPinnedApps()
+    }
+
+    private fun populateTerminalPinnedApps() {
+        val raw = prefs.terminalPinnedApps.trim()
+        val count = if (raw.isEmpty()) {
+            "Default"
+        } else {
+            try {
+                val len = JSONArray(raw).length()
+                "$len apps"
+            } catch (e: Exception) {
+                "Custom"
+            }
+        }
+        binding.tvTerminalPinnedApps.text = count
+    }
+
+    private fun showManagePinnedAppsDialog() {
+        val options = arrayOf(
+            "Add App to Suggestion Bar",
+            "Remove an App",
+            "Reset to Default Apps",
+            "Clear All Pinned Apps"
+        )
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.suggestion_bar_apps)
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> showAddPinnedAppDialog()
+                    1 -> showRemovePinnedAppDialog()
+                    2 -> {
+                        prefs.terminalPinnedApps = ""
+                        populateTerminalPinnedApps()
+                        viewModel.refreshHome.postValue(true)
+                        requireContext().showToast("Reset to default suggestion apps")
+                    }
+                    3 -> {
+                        prefs.terminalPinnedApps = "[]"
+                        populateTerminalPinnedApps()
+                        viewModel.refreshHome.postValue(true)
+                        requireContext().showToast("Cleared suggestion apps")
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showAddPinnedAppDialog() {
+        val apps = viewModel.appList.value?.filterIsInstance<AppModel.App>()?.sortedBy { it.appLabel.lowercase() } ?: emptyList()
+        if (apps.isEmpty()) {
+            requireContext().showToast("No apps available")
+            return
+        }
+        val appNames = apps.map { it.appLabel }.toTypedArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle("Add App")
+            .setItems(appNames) { _, which ->
+                val selected = apps[which]
+                val current = getPinnedAppsList().toMutableList()
+                if (!current.contains(selected.appLabel)) {
+                    current.add(selected.appLabel)
+                    prefs.terminalPinnedApps = JSONArray(current).toString()
+                    populateTerminalPinnedApps()
+                    viewModel.refreshHome.postValue(true)
+                    requireContext().showToast("Added ${selected.appLabel}")
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showRemovePinnedAppDialog() {
+        val current = getPinnedAppsList()
+        if (current.isEmpty()) {
+            requireContext().showToast("No pinned apps to remove")
+            return
+        }
+        val names = current.toTypedArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle("Remove App")
+            .setItems(names) { _, which ->
+                val toRemove = names[which]
+                val updated = current.filter { it != toRemove }
+                prefs.terminalPinnedApps = JSONArray(updated).toString()
+                populateTerminalPinnedApps()
+                viewModel.refreshHome.postValue(true)
+                requireContext().showToast("Removed $toRemove")
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun getPinnedAppsList(): List<String> {
+        val raw = prefs.terminalPinnedApps.trim()
+        if (raw.isNotEmpty()) {
+            return try {
+                val array = JSONArray(raw)
+                val list = mutableListOf<String>()
+                for (i in 0 until array.length()) list.add(array.getString(i))
+                list
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+        val list = mutableListOf<String>()
+        for (i in 1..8) {
+            val name = prefs.getAppName(i)
+            if (name.isNotBlank()) list.add(name)
+        }
+        return list
+    }
+
+    private fun populateTerminalTheme() {
+        binding.tvTerminalTheme.text = TerminalTheme.fromId(prefs.terminalTheme).displayName
+    }
+
+    private fun toggleLauncherMode() {
+        prefs.terminalMode = !prefs.terminalMode
+        populateLauncherMode()
+        viewModel.refreshHome.postValue(true)
+    }
+
+    private fun showTerminalThemeMenu(anchor: View) {
+        anchor.showPopupMenu(
+            configure = { menu ->
+                TerminalTheme.ALL_THEMES.forEachIndexed { index, theme ->
+                    menu.add(Menu.NONE, index, index, theme.displayName)
+                }
+            }
+        ) { item ->
+            val selected = TerminalTheme.ALL_THEMES.getOrNull(item.itemId)
+            if (selected != null) {
+                prefs.terminalTheme = selected.id
+                populateTerminalTheme()
+                viewModel.refreshHome.postValue(true)
+            }
+        }
     }
 
     private fun showHiddenApps() {
