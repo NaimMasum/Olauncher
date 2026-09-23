@@ -61,6 +61,7 @@ import app.olauncher.ui.terminal.TerminalCommandHandler
 import app.olauncher.ui.terminal.TerminalKeyboardView
 import app.olauncher.ui.terminal.TerminalLogAdapter
 import app.olauncher.ui.terminal.TerminalLogItem
+import app.olauncher.ui.terminal.TerminalSessionManager
 import app.olauncher.ui.terminal.TerminalSuggestion
 import app.olauncher.ui.terminal.TerminalSuggestionAdapter
 import app.olauncher.ui.terminal.TerminalTheme
@@ -77,6 +78,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private var terminalLogAdapter: TerminalLogAdapter? = null
     private var terminalSuggestionAdapter: TerminalSuggestionAdapter? = null
     private var terminalCommandHandler: TerminalCommandHandler? = null
+    private var terminalSessionManager: TerminalSessionManager? = null
     private var terminalKeyboardView: TerminalKeyboardView? = null
     private var installedAppsList: List<AppModel.App> = emptyList()
     private var isTerminalInitialized = false
@@ -281,6 +283,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         }
         viewModel.appList.observe(viewLifecycleOwner) { list ->
             installedAppsList = list?.filterIsInstance<AppModel.App>() ?: emptyList()
+            terminalSessionManager?.updateAppsListScript(installedAppsList)
             if (prefs.terminalMode && isTerminalInitialized) {
                 refreshSuggestions()
             }
@@ -407,6 +410,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             binding.setDefaultLauncher.visibility = View.GONE
             initTerminal()
             applyTerminalTheme(TerminalTheme.fromId(prefs.terminalTheme))
+            updatePtyModeUi(prefs.terminalUsePty)
             return
         } else {
             binding.terminalLayout.visibility = View.GONE
@@ -931,6 +935,41 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             }
         )
 
+        terminalSessionManager = TerminalSessionManager(
+            context = requireContext(),
+            prefs = prefs,
+            callbacks = object : TerminalSessionManager.Callbacks {
+                override fun onOpenSettings() {
+                    requireActivity().runOnUiThread {
+                        try {
+                            findNavController().navigate(R.id.action_mainFragment_to_settingsFragment)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+
+                override fun onOpenAppsDrawer() {
+                    requireActivity().runOnUiThread {
+                        showAppList(Constants.FLAG_LAUNCH_APP)
+                    }
+                }
+
+                override fun onSwitchToGui() {
+                    requireActivity().runOnUiThread {
+                        prefs.terminalMode = false
+                        populateHomeScreen(true)
+                    }
+                }
+
+                override fun getInstalledApps(): List<AppModel.App> {
+                    return installedAppsList
+                }
+            }
+        )
+        terminalSessionManager?.attachToView(binding.terminalView)
+        terminalSessionManager?.updateAppsListScript(installedAppsList)
+
         binding.etTerminalInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_NULL) {
                 val command = binding.etTerminalInput.text.toString()
@@ -955,77 +994,125 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         terminalKeyboardView = TerminalKeyboardView(
             rootView = binding.includedKeyboard.llKeyboardRoot,
             onSendInput = { text ->
-                val start = binding.etTerminalInput.selectionStart.coerceAtLeast(0)
-                val end = binding.etTerminalInput.selectionEnd.coerceAtLeast(0)
-                binding.etTerminalInput.text.replace(kotlin.math.min(start, end), kotlin.math.max(start, end), text)
+                if (prefs.terminalUsePty) {
+                    terminalSessionManager?.write(text)
+                } else {
+                    val start = binding.etTerminalInput.selectionStart.coerceAtLeast(0)
+                    val end = binding.etTerminalInput.selectionEnd.coerceAtLeast(0)
+                    binding.etTerminalInput.text.replace(kotlin.math.min(start, end), kotlin.math.max(start, end), text)
+                }
             },
             onSendBackspace = {
-                val start = binding.etTerminalInput.selectionStart
-                val end = binding.etTerminalInput.selectionEnd
-                if (start != end) {
-                    binding.etTerminalInput.text.delete(kotlin.math.min(start, end), kotlin.math.max(start, end))
-                } else if (start > 0) {
-                    binding.etTerminalInput.text.delete(start - 1, start)
+                if (prefs.terminalUsePty) {
+                    terminalSessionManager?.sendBackspace()
+                } else {
+                    val start = binding.etTerminalInput.selectionStart
+                    val end = binding.etTerminalInput.selectionEnd
+                    if (start != end) {
+                        binding.etTerminalInput.text.delete(kotlin.math.min(start, end), kotlin.math.max(start, end))
+                    } else if (start > 0) {
+                        binding.etTerminalInput.text.delete(start - 1, start)
+                    }
                 }
             },
             onEnterPressed = {
-                val command = binding.etTerminalInput.text.toString()
-                if (command.isNotBlank()) {
-                    terminalCommandHandler?.execute(command)
-                    binding.etTerminalInput.setText("")
+                if (prefs.terminalUsePty) {
+                    terminalSessionManager?.sendEnter()
+                } else {
+                    val command = binding.etTerminalInput.text.toString()
+                    if (command.isNotBlank()) {
+                        terminalCommandHandler?.execute(command)
+                        binding.etTerminalInput.setText("")
+                    }
                 }
             },
             onTabPressed = {
-                val query = binding.etTerminalInput.text.toString()
-                val suggestions = terminalCommandHandler?.getSuggestions(query) ?: emptyList()
-                if (suggestions.isNotEmpty()) {
-                    val first = suggestions[0]
-                    if (first.executeImmediately) {
-                        terminalCommandHandler?.execute(first.commandToFill)
-                        binding.etTerminalInput.setText("")
-                    } else {
-                        binding.etTerminalInput.setText(first.commandToFill)
-                        binding.etTerminalInput.setSelection(first.commandToFill.length)
+                if (prefs.terminalUsePty) {
+                    terminalSessionManager?.sendTab()
+                } else {
+                    val query = binding.etTerminalInput.text.toString()
+                    val suggestions = terminalCommandHandler?.getSuggestions(query) ?: emptyList()
+                    if (suggestions.isNotEmpty()) {
+                        val first = suggestions[0]
+                        if (first.executeImmediately) {
+                            terminalCommandHandler?.execute(first.commandToFill)
+                            binding.etTerminalInput.setText("")
+                        } else {
+                            binding.etTerminalInput.setText(first.commandToFill)
+                            binding.etTerminalInput.setSelection(first.commandToFill.length)
+                        }
                     }
                 }
             },
             onAppsPressed = {
-                terminalCommandHandler?.execute("apps")
+                if (prefs.terminalUsePty) {
+                    terminalSessionManager?.write("apps\n")
+                } else {
+                    terminalCommandHandler?.execute("apps")
+                }
             },
             onCtrlCPressed = {
-                terminalCommandHandler?.sendCtrlC()
+                if (prefs.terminalUsePty) {
+                    terminalSessionManager?.sendCtrlC()
+                } else {
+                    terminalCommandHandler?.sendCtrlC()
+                }
             },
             onUpPressed = {
-                terminalCommandHandler?.getPreviousCommand()?.let {
-                    binding.etTerminalInput.setText(it)
-                    binding.etTerminalInput.setSelection(it.length)
+                if (prefs.terminalUsePty) {
+                    terminalSessionManager?.sendUp()
+                } else {
+                    terminalCommandHandler?.getPreviousCommand()?.let {
+                        binding.etTerminalInput.setText(it)
+                        binding.etTerminalInput.setSelection(it.length)
+                    }
                 }
             },
             onDownPressed = {
-                terminalCommandHandler?.getNextCommand()?.let {
-                    binding.etTerminalInput.setText(it)
-                    binding.etTerminalInput.setSelection(it.length)
+                if (prefs.terminalUsePty) {
+                    terminalSessionManager?.sendDown()
+                } else {
+                    terminalCommandHandler?.getNextCommand()?.let {
+                        binding.etTerminalInput.setText(it)
+                        binding.etTerminalInput.setSelection(it.length)
+                    }
                 }
             },
             onLeftPressed = {
-                val pos = (binding.etTerminalInput.selectionStart - 1).coerceAtLeast(0)
-                binding.etTerminalInput.setSelection(pos)
+                if (prefs.terminalUsePty) {
+                    terminalSessionManager?.sendLeft()
+                } else {
+                    val pos = (binding.etTerminalInput.selectionStart - 1).coerceAtLeast(0)
+                    binding.etTerminalInput.setSelection(pos)
+                }
             },
             onRightPressed = {
-                val pos = (binding.etTerminalInput.selectionStart + 1).coerceAtMost(binding.etTerminalInput.text?.length ?: 0)
-                binding.etTerminalInput.setSelection(pos)
+                if (prefs.terminalUsePty) {
+                    terminalSessionManager?.sendRight()
+                } else {
+                    val pos = (binding.etTerminalInput.selectionStart + 1).coerceAtMost(binding.etTerminalInput.text?.length ?: 0)
+                    binding.etTerminalInput.setSelection(pos)
+                }
             },
             onEscPressed = {
-                binding.etTerminalInput.setText("")
+                if (prefs.terminalUsePty) {
+                    terminalSessionManager?.sendEsc()
+                } else {
+                    binding.etTerminalInput.setText("")
+                }
             }
         )
 
-        // Top Bar: Clock, Date, Mode Toggle
+        // Top Bar: Clock, Date, Mode Toggle, PTY Mode Toggle
         binding.tcTerminalClock.setOnClickListener { openClockApp() }
         binding.tcTerminalDate.setOnClickListener { openCalendarApp() }
         binding.btnToggleMode.setOnClickListener {
             prefs.terminalMode = false
             populateHomeScreen(true)
+        }
+        binding.btnTogglePtyMode.setOnClickListener {
+            prefs.terminalUsePty = !prefs.terminalUsePty
+            updatePtyModeUi(prefs.terminalUsePty)
         }
 
         fun updateKeyboardVisibility(visible: Boolean) {
@@ -1034,8 +1121,14 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             binding.etTerminalInput.showSoftInputOnFocus = !visible
             if (visible) {
                 binding.etTerminalInput.hideKeyboard()
+                binding.terminalView.hideKeyboard()
             } else {
-                binding.etTerminalInput.showKeyboard()
+                if (prefs.terminalUsePty) {
+                    binding.terminalView.requestFocus()
+                    binding.terminalView.showKeyboard()
+                } else {
+                    binding.etTerminalInput.showKeyboard()
+                }
             }
         }
 
@@ -1056,9 +1149,16 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         }
 
         binding.terminalLayout.setOnClickListener {
-            binding.etTerminalInput.requestFocus()
-            if (!prefs.terminalKeyboardVisible) {
-                binding.etTerminalInput.showKeyboard()
+            if (prefs.terminalUsePty) {
+                binding.terminalView.requestFocus()
+                if (!prefs.terminalKeyboardVisible) {
+                    binding.terminalView.showKeyboard()
+                }
+            } else {
+                binding.etTerminalInput.requestFocus()
+                if (!prefs.terminalKeyboardVisible) {
+                    binding.etTerminalInput.showKeyboard()
+                }
             }
         }
 
@@ -1144,13 +1244,36 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             .show()
     }
 
+    private fun updatePtyModeUi(usePty: Boolean) {
+        val theme = TerminalTheme.fromId(prefs.terminalTheme)
+        if (usePty) {
+            binding.terminalViewContainer.visibility = View.VISIBLE
+            binding.rvTerminalLog.visibility = View.GONE
+            binding.terminalInputLayout.visibility = View.GONE
+            binding.rvTerminalSuggestions.visibility = View.GONE
+            binding.btnTogglePtyMode.text = "[TERMUX]"
+            binding.btnTogglePtyMode.setTextColor(theme.accentColor)
+            binding.terminalView.requestFocus()
+        } else {
+            binding.terminalViewContainer.visibility = View.GONE
+            binding.rvTerminalLog.visibility = View.VISIBLE
+            binding.terminalInputLayout.visibility = View.VISIBLE
+            refreshSuggestions()
+            binding.btnTogglePtyMode.text = "[CLI]"
+            binding.btnTogglePtyMode.setTextColor(theme.secondaryColor)
+            binding.etTerminalInput.requestFocus()
+        }
+    }
+
     private fun applyTerminalTheme(theme: TerminalTheme) {
         terminalLogAdapter?.setTheme(theme)
         terminalSuggestionAdapter?.setTheme(theme)
         terminalKeyboardView?.applyTheme(theme)
+        terminalSessionManager?.applyTheme(theme)
         binding.terminalLayout.setBackgroundColor(theme.bgColor)
         binding.tcTerminalClock.setTextColor(theme.accentColor)
         binding.tcTerminalDate.setTextColor(theme.secondaryColor)
+        binding.btnTogglePtyMode.setTextColor(if (prefs.terminalUsePty) theme.accentColor else theme.secondaryColor)
         binding.btnToggleMode.setTextColor(theme.promptColor)
         binding.tvTerminalPrompt.text = terminalCommandHandler?.getPromptText() ?: "naim@android:$ "
         binding.etTerminalInput.setTextColor(theme.textColor)
@@ -1168,6 +1291,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             }
             isReceiverRegistered = false
         }
+        terminalSessionManager?.destroy()
         terminalCommandHandler?.destroy()
         super.onDestroyView()
         isTerminalInitialized = false

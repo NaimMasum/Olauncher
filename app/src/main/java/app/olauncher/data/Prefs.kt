@@ -46,6 +46,7 @@ class Prefs(context: Context) {
     // private val HOME_BUTTON_SHOW_RECENTS = "HOME_BUTTON_SHOW_RECENTS"
 
     private val TERMINAL_MODE = "TERMINAL_MODE"
+    private val TERMINAL_USE_PTY = "TERMINAL_USE_PTY"
     private val TERMINAL_THEME = "TERMINAL_THEME"
     private val TERMINAL_PROMPT = "TERMINAL_PROMPT"
     private val TERMINAL_ALIASES = "TERMINAL_ALIASES"
@@ -710,4 +711,8 @@ class Prefs(context: Context) {
     var terminalNotificationApps: Set<String>
         get() = prefs.getStringSet(TERMINAL_NOTIFICATION_APPS, emptySet()) ?: emptySet()
         set(value) = prefs.edit { putStringSet(TERMINAL_NOTIFICATION_APPS, value) }
+
+    var terminalUsePty: Boolean
+        get() = prefs.getBoolean(TERMINAL_USE_PTY, true)
+        set(value) = prefs.edit { putBoolean(TERMINAL_USE_PTY, value) }
 }
