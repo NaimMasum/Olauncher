@@ -14,6 +14,7 @@ import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
 import androidx.core.app.NotificationManagerCompat
+import app.olauncher.service.TerminalNotificationListenerService
 import app.olauncher.BuildConfig
 import app.olauncher.data.AppModel
 import app.olauncher.data.Prefs
@@ -1492,6 +1493,10 @@ class TerminalCommandHandler(
     }
 
     private fun handleNotificationCommand(args: List<String>) {
+        val history = synchronized(TerminalNotificationListenerService.recentHistory) {
+            TerminalNotificationListenerService.recentHistory.toList()
+        }
+
         if (args.isEmpty()) {
             val isEnabled = prefs.terminalNotificationsEnabled
             val isGranted = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
@@ -1502,9 +1507,23 @@ class TerminalCommandHandler(
             callbacks.onAddLog(TerminalLogItem("Status:      ${if (isEnabled) "Enabled (Active)" else "Disabled"}", TerminalItemType.OUTPUT))
             callbacks.onAddLog(TerminalLogItem("Permission:  ${if (isGranted) "Granted" else "Missing (tap Settings to enable)"}", if (isGranted) TerminalItemType.OUTPUT else TerminalItemType.ERROR))
             callbacks.onAddLog(TerminalLogItem("Filter:      $appsStr", TerminalItemType.OUTPUT))
+            callbacks.onAddLog(TerminalLogItem("Intercepted: ${history.size} recent notifications", TerminalItemType.OUTPUT))
+
+            if (history.isNotEmpty()) {
+                callbacks.onAddLog(TerminalLogItem("Recent Feed:", TerminalItemType.BANNER))
+                val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+                val recentFive = history.takeLast(5)
+                for (rec in recentFive) {
+                    val tStr = timeFormat.format(Date(rec.time))
+                    val body = if (rec.title.isNotBlank()) "${rec.title}: ${rec.text}" else rec.text
+                    callbacks.onAddLog(TerminalLogItem("[$tStr 🔔 ${rec.appLabel}] $body", TerminalItemType.SUCCESS))
+                }
+            }
+
             callbacks.onAddLog(TerminalLogItem("Commands:", TerminalItemType.OUTPUT))
             callbacks.onAddLog(TerminalLogItem("  notif on       : Enable terminal notifications", TerminalItemType.OUTPUT))
             callbacks.onAddLog(TerminalLogItem("  notif off      : Disable terminal notifications", TerminalItemType.OUTPUT))
+            callbacks.onAddLog(TerminalLogItem("  notif history  : Show all captured notifications", TerminalItemType.OUTPUT))
             callbacks.onAddLog(TerminalLogItem("  notif apps     : List allowed notification apps", TerminalItemType.OUTPUT))
             callbacks.onAddLog(TerminalLogItem("  notif test     : Send a test notification", TerminalItemType.OUTPUT))
             callbacks.onAddLog(TerminalLogItem("  notif settings : Open Android Notification Access", TerminalItemType.OUTPUT))
@@ -1521,6 +1540,7 @@ class TerminalCommandHandler(
                     callbacks.onAddLog(TerminalLogItem("Opening Notification Access settings...", TerminalItemType.OUTPUT))
                     openNotificationListenerSettings()
                 } else {
+                    TerminalNotificationListenerService.ensureServiceBound(context)
                     callbacks.onAddLog(TerminalLogItem("Terminal notifications enabled! Incoming messages will appear in terminal.", TerminalItemType.SUCCESS))
                 }
             }
@@ -1528,11 +1548,31 @@ class TerminalCommandHandler(
                 prefs.terminalNotificationsEnabled = false
                 callbacks.onAddLog(TerminalLogItem("Terminal notifications disabled.", TerminalItemType.OUTPUT))
             }
+            "history", "log", "recent" -> {
+                if (history.isEmpty()) {
+                    callbacks.onAddLog(TerminalLogItem("No notifications captured yet.", TerminalItemType.OUTPUT))
+                } else {
+                    callbacks.onAddLog(TerminalLogItem("── Notification History (${history.size}) ───────────", TerminalItemType.BANNER))
+                    val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+                    for (rec in history) {
+                        val tStr = timeFormat.format(Date(rec.time))
+                        val body = if (rec.title.isNotBlank()) "${rec.title}: ${rec.text}" else rec.text
+                        callbacks.onAddLog(TerminalLogItem("[$tStr 🔔 ${rec.appLabel}] $body", TerminalItemType.SUCCESS))
+                    }
+                    callbacks.onAddLog(TerminalLogItem("─────────────────────────────────────", TerminalItemType.BANNER))
+                }
+            }
+            "clear" -> {
+                synchronized(TerminalNotificationListenerService.recentHistory) {
+                    TerminalNotificationListenerService.recentHistory.clear()
+                }
+                callbacks.onAddLog(TerminalLogItem("Notification history cleared.", TerminalItemType.SUCCESS))
+            }
             "settings", "perm", "permission" -> {
                 callbacks.onAddLog(TerminalLogItem("Opening Notification Access settings...", TerminalItemType.OUTPUT))
                 openNotificationListenerSettings()
             }
-            "apps", "list" -> {
+            "apps" -> {
                 val apps = prefs.terminalNotificationApps
                 if (apps.isEmpty()) {
                     callbacks.onAddLog(TerminalLogItem("All apps are allowed. (Configure specific apps in Settings)", TerminalItemType.OUTPUT))
@@ -1559,7 +1599,7 @@ class TerminalCommandHandler(
                 )
             }
             else -> {
-                callbacks.onAddLog(TerminalLogItem("Usage: notif [on|off|apps|test|settings]", TerminalItemType.ERROR))
+                callbacks.onAddLog(TerminalLogItem("Usage: notif [on|off|history|clear|apps|test|settings]", TerminalItemType.ERROR))
             }
         }
     }

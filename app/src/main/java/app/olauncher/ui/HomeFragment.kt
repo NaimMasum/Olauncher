@@ -126,6 +126,10 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             }
         }
 
+        if (prefs.terminalNotificationsEnabled) {
+            TerminalNotificationListenerService.ensureServiceBound(requireContext())
+        }
+
         deviceManager = context?.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
 
         initObservers()
