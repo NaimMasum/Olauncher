@@ -162,7 +162,7 @@ data class TerminalTheme(
 
         val CYBERPUNK = TerminalTheme(
             id = "cyberpunk",
-            displayName = "Cyberpunk Neon (Mixed)",
+            displayName = "Cyberpunk Neon",
             bgColor = Color.parseColor("#0D0221"),
             textColor = Color.parseColor("#FFE600"),
             promptColor = Color.parseColor("#FF007F"),
@@ -171,6 +171,162 @@ data class TerminalTheme(
             accentColor = Color.parseColor("#7122FA"),
             pathColor = Color.parseColor("#00F0FF"),
             commandColor = Color.parseColor("#05FFA1")
+        )
+
+        val ONEDARK = TerminalTheme(
+            id = "onedark",
+            displayName = "One Dark Pro",
+            bgColor = Color.parseColor("#1E1E24"),
+            textColor = Color.parseColor("#ABB2BF"),
+            promptColor = Color.parseColor("#98C379"),
+            secondaryColor = Color.parseColor("#5C6370"),
+            errorColor = Color.parseColor("#E06C75"),
+            accentColor = Color.parseColor("#61AFEF"),
+            pathColor = Color.parseColor("#E5C07B"),
+            commandColor = Color.parseColor("#C678DD")
+        )
+
+        val CATPPUCCIN = TerminalTheme(
+            id = "catppuccin",
+            displayName = "Catppuccin Mocha",
+            bgColor = Color.parseColor("#1E1E2E"),
+            textColor = Color.parseColor("#CDD6F4"),
+            promptColor = Color.parseColor("#A6E3A1"),
+            secondaryColor = Color.parseColor("#6C7086"),
+            errorColor = Color.parseColor("#F38BA8"),
+            accentColor = Color.parseColor("#CBA6F7"),
+            pathColor = Color.parseColor("#89B4FA"),
+            commandColor = Color.parseColor("#F9E2AF")
+        )
+
+        val LATTE = TerminalTheme(
+            id = "latte",
+            displayName = "Catppuccin Latte (Light)",
+            bgColor = Color.parseColor("#EFF1F5"),
+            textColor = Color.parseColor("#4C4F69"),
+            promptColor = Color.parseColor("#40A02B"),
+            secondaryColor = Color.parseColor("#9CA0B0"),
+            errorColor = Color.parseColor("#D20F39"),
+            accentColor = Color.parseColor("#1E66F5"),
+            pathColor = Color.parseColor("#8839EF"),
+            commandColor = Color.parseColor("#FE640B")
+        )
+
+        val GITHUB = TerminalTheme(
+            id = "github",
+            displayName = "GitHub Dark",
+            bgColor = Color.parseColor("#0D1117"),
+            textColor = Color.parseColor("#C9D1D9"),
+            promptColor = Color.parseColor("#58A6FF"),
+            secondaryColor = Color.parseColor("#484F58"),
+            errorColor = Color.parseColor("#F85149"),
+            accentColor = Color.parseColor("#3FB950"),
+            pathColor = Color.parseColor("#F0883E"),
+            commandColor = Color.parseColor("#A371F7")
+        )
+
+        val POWERSHELL = TerminalTheme(
+            id = "powershell",
+            displayName = "PowerShell Deep Blue",
+            bgColor = Color.parseColor("#012456"),
+            textColor = Color.parseColor("#EEEDF0"),
+            promptColor = Color.parseColor("#FFFF00"),
+            secondaryColor = Color.parseColor("#4169E1"),
+            errorColor = Color.parseColor("#FF5555"),
+            accentColor = Color.parseColor("#00FFFF"),
+            pathColor = Color.parseColor("#00FF7F"),
+            commandColor = Color.parseColor("#FFFFFF")
+        )
+
+        val UBUNTU = TerminalTheme(
+            id = "ubuntu",
+            displayName = "Ubuntu Aubergine",
+            bgColor = Color.parseColor("#300A24"),
+            textColor = Color.parseColor("#FFFFFF"),
+            promptColor = Color.parseColor("#4E9A06"),
+            secondaryColor = Color.parseColor("#77216F"),
+            errorColor = Color.parseColor("#CC0000"),
+            accentColor = Color.parseColor("#E95420"),
+            pathColor = Color.parseColor("#729FCF"),
+            commandColor = Color.parseColor("#FCE94F")
+        )
+
+        val SOLARIZED_LIGHT = TerminalTheme(
+            id = "solarizedlight",
+            displayName = "Solarized Light",
+            bgColor = Color.parseColor("#FDF6E3"),
+            textColor = Color.parseColor("#657B83"),
+            promptColor = Color.parseColor("#859900"),
+            secondaryColor = Color.parseColor("#93A1A1"),
+            errorColor = Color.parseColor("#DC322F"),
+            accentColor = Color.parseColor("#268BD2"),
+            pathColor = Color.parseColor("#B58900"),
+            commandColor = Color.parseColor("#CB4B16")
+        )
+
+        val OUTRUN = TerminalTheme(
+            id = "outrun",
+            displayName = "Outrun Sunset",
+            bgColor = Color.parseColor("#1F0E1E"),
+            textColor = Color.parseColor("#FFD285"),
+            promptColor = Color.parseColor("#FF5E8A"),
+            secondaryColor = Color.parseColor("#6B3B60"),
+            errorColor = Color.parseColor("#FF3366"),
+            accentColor = Color.parseColor("#FF9900"),
+            pathColor = Color.parseColor("#FF007F"),
+            commandColor = Color.parseColor("#00F0FF")
+        )
+
+        val EMERALD = TerminalTheme(
+            id = "emerald",
+            displayName = "Hacker Emerald",
+            bgColor = Color.parseColor("#021414"),
+            textColor = Color.parseColor("#2EE59D"),
+            promptColor = Color.parseColor("#00F5B4"),
+            secondaryColor = Color.parseColor("#0F5245"),
+            errorColor = Color.parseColor("#FF4D6D"),
+            accentColor = Color.parseColor("#00D2FF"),
+            pathColor = Color.parseColor("#70FFD4"),
+            commandColor = Color.parseColor("#2EE59D")
+        )
+
+        val AYU = TerminalTheme(
+            id = "ayu",
+            displayName = "Ayu Mirage",
+            bgColor = Color.parseColor("#1F2430"),
+            textColor = Color.parseColor("#CBCCC6"),
+            promptColor = Color.parseColor("#FFCC66"),
+            secondaryColor = Color.parseColor("#707A8C"),
+            errorColor = Color.parseColor("#F28779"),
+            accentColor = Color.parseColor("#73D0FF"),
+            pathColor = Color.parseColor("#FFA759"),
+            commandColor = Color.parseColor("#BAE67E")
+        )
+
+        val KANAGAWA = TerminalTheme(
+            id = "kanagawa",
+            displayName = "Kanagawa Wave",
+            bgColor = Color.parseColor("#1F1F28"),
+            textColor = Color.parseColor("#DCD7BA"),
+            promptColor = Color.parseColor("#98BB6C"),
+            secondaryColor = Color.parseColor("#727169"),
+            errorColor = Color.parseColor("#C34043"),
+            accentColor = Color.parseColor("#7E9CD8"),
+            pathColor = Color.parseColor("#FFA066"),
+            commandColor = Color.parseColor("#957FB8")
+        )
+
+        val ROSE_PINE = TerminalTheme(
+            id = "rosepine",
+            displayName = "Rosé Pine",
+            bgColor = Color.parseColor("#191724"),
+            textColor = Color.parseColor("#E0DEF4"),
+            promptColor = Color.parseColor("#EBBCBA"),
+            secondaryColor = Color.parseColor("#6E6A86"),
+            errorColor = Color.parseColor("#EB6F92"),
+            accentColor = Color.parseColor("#31748F"),
+            pathColor = Color.parseColor("#F6C177"),
+            commandColor = Color.parseColor("#9CCFD8")
         )
 
         fun fromId(id: String): TerminalTheme {
@@ -186,6 +342,18 @@ data class TerminalTheme(
                 "gruvbox" -> GRUVBOX
                 "solarized" -> SOLARIZED
                 "cyberpunk" -> CYBERPUNK
+                "onedark", "atom" -> ONEDARK
+                "catppuccin", "mocha" -> CATPPUCCIN
+                "latte", "light" -> LATTE
+                "github", "ghdark" -> GITHUB
+                "powershell", "ps", "blue" -> POWERSHELL
+                "ubuntu" -> UBUNTU
+                "solarizedlight", "solarlight" -> SOLARIZED_LIGHT
+                "outrun", "sunset" -> OUTRUN
+                "emerald", "ghost" -> EMERALD
+                "ayu", "mirage" -> AYU
+                "kanagawa", "wave" -> KANAGAWA
+                "rosepine", "rose" -> ROSE_PINE
                 else -> GREEN
             }
         }
@@ -193,7 +361,10 @@ data class TerminalTheme(
         val ALL_THEMES = listOf(
             GREEN, AMBER, CYAN, WHITE, RED,
             DRACULA, SYNTHWAVE, TOKYO, NORD,
-            GRUVBOX, SOLARIZED, CYBERPUNK
+            GRUVBOX, SOLARIZED, CYBERPUNK,
+            ONEDARK, CATPPUCCIN, LATTE, GITHUB,
+            POWERSHELL, UBUNTU, SOLARIZED_LIGHT,
+            OUTRUN, EMERALD, AYU, KANAGAWA, ROSE_PINE
         )
     }
 }

@@ -1322,15 +1322,21 @@ class TerminalCommandHandler(
     private fun handleTheme(args: List<String>) {
         if (args.isEmpty()) {
             val current = prefs.terminalTheme
-            val available = TerminalTheme.ALL_THEMES.joinToString(", ") { it.id }
-            callbacks.onAddLog(TerminalLogItem("Current theme: $current\nAvailable: $available", TerminalItemType.OUTPUT))
+            val currentTheme = TerminalTheme.fromId(current)
+            val sb = StringBuilder("Current theme: ${currentTheme.displayName} (${currentTheme.id})\n\nAvailable themes (${TerminalTheme.ALL_THEMES.size}):\n")
+            for (t in TerminalTheme.ALL_THEMES) {
+                val mark = if (t.id == currentTheme.id) " [*]" else ""
+                sb.append("  %-16s : %s%s\n".format(t.id, t.displayName, mark))
+            }
+            sb.append("\nUsage: theme <id> (e.g. 'theme onedark', 'theme catppuccin')")
+            callbacks.onAddLog(TerminalLogItem(sb.toString().trim(), TerminalItemType.OUTPUT))
             return
         }
         val themeId = args[0].lowercase()
         val theme = TerminalTheme.fromId(themeId)
         prefs.terminalTheme = theme.id
         callbacks.onThemeChanged(theme)
-        callbacks.onAddLog(TerminalLogItem("Theme set to ${theme.displayName}.", TerminalItemType.SUCCESS))
+        callbacks.onAddLog(TerminalLogItem("Theme set to ${theme.displayName} (${theme.id}).", TerminalItemType.SUCCESS))
     }
 
     private fun showBattery() {
