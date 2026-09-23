@@ -5,7 +5,8 @@
     android:layout_height="wrap_content"
     android:layout_marginTop="2dp"
     android:orientation="vertical"
-    android:padding="2dp">
+    android:padding="2dp"
+    android:splitMotionEvents="true">
 
     <!-- Termux Accessory Row: ESC | ^C | TAB | ▲ | ▼ | ◀ | ▶ | | | ~ -->
     <LinearLayout
@@ -13,7 +14,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="1dp"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:splitMotionEvents="true">
 
         <TextView android:id="@+id/key_esc" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="11sp" android:text="ESC" />
         <TextView android:id="@+id/key_ctrl_c" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="11sp" android:text="^C" />
@@ -30,7 +32,8 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:splitMotionEvents="true">
 
         <TextView android:id="@+id/key_1" style="@style/TerminalKey" android:text="1" />
         <TextView android:id="@+id/key_2" style="@style/TerminalKey" android:text="2" />
@@ -48,7 +51,8 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:splitMotionEvents="true">
 
         <TextView android:id="@+id/key_q" style="@style/TerminalKey" android:text="q" />
         <TextView android:id="@+id/key_w" style="@style/TerminalKey" android:text="w" />
@@ -66,7 +70,8 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:splitMotionEvents="true">
 
         <Space
             android:layout_width="0dp"
@@ -91,7 +96,8 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:splitMotionEvents="true">
 
         <TextView
             android:id="@+id/key_shift"
@@ -118,7 +124,8 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:splitMotionEvents="true">
 
         <TextView
             android:id="@+id/key_sym"
