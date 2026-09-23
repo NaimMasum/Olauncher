@@ -17,6 +17,7 @@ import android.widget.Toast
 import org.json.JSONArray
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.os.bundleOf
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
@@ -103,11 +104,21 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
             binding.footer.text = getText(R.string.new_app_minimal_todo_lists)
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (prefs.terminalMode) {
+            populateTerminalNotifications()
+            populateTerminalNotificationApps()
+        }
+    }
+
     override fun onClick(view: View) {
         when (view.id) {
             R.id.tvLauncherMode -> toggleLauncherMode()
             R.id.tvTerminalTheme -> showTerminalThemeMenu(view)
             R.id.tvTerminalPinnedApps -> showManagePinnedAppsDialog()
+            R.id.tvTerminalNotifications -> toggleTerminalNotifications()
+            R.id.tvTerminalNotificationApps -> showNotificationAppsDialog()
             R.id.olauncherHiddenApps -> showHiddenApps()
             R.id.moreFeatures -> viewModel.showDialog.postValue(Constants.Dialog.PRO_MESSAGE)
             R.id.screenTimeOnOff -> viewModel.showDialog.postValue(Constants.Dialog.DIGITAL_WELLBEING)
@@ -191,9 +202,11 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         binding.appThemeText.setOnClickListener(this)
         binding.textSizeValue.setOnClickListener(this)
         binding.boldFont.setOnClickListener(this)
-        binding.tvLauncherMode.setOnClickListener(this)
-        binding.tvTerminalTheme.setOnClickListener(this)
-        binding.tvTerminalPinnedApps.setOnClickListener(this)
+        binding.tvLauncherMode?.setOnClickListener(this)
+        binding.tvTerminalTheme?.setOnClickListener(this)
+        binding.tvTerminalPinnedApps?.setOnClickListener(this)
+        binding.tvTerminalNotifications?.setOnClickListener(this)
+        binding.tvTerminalNotificationApps?.setOnClickListener(this)
 
         binding.share.setOnClickListener(this)
         binding.rate.setOnClickListener(this)
@@ -372,14 +385,99 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
     }
 
     private fun populateLauncherMode() {
-        binding.tvLauncherMode.text = if (prefs.terminalMode) {
+        binding.tvLauncherMode?.text = if (prefs.terminalMode) {
             getString(R.string.mode_terminal)
         } else {
             getString(R.string.mode_classic)
         }
-        binding.flTerminalTheme.visibility = if (prefs.terminalMode) View.VISIBLE else View.GONE
-        binding.flTerminalPinnedApps.visibility = if (prefs.terminalMode) View.VISIBLE else View.GONE
+        binding.flTerminalTheme?.visibility = if (prefs.terminalMode) View.VISIBLE else View.GONE
+        binding.flTerminalPinnedApps?.visibility = if (prefs.terminalMode) View.VISIBLE else View.GONE
+        binding.flTerminalNotifications?.visibility = if (prefs.terminalMode) View.VISIBLE else View.GONE
+        binding.flTerminalNotificationApps?.visibility = if (prefs.terminalMode && prefs.terminalNotificationsEnabled) View.VISIBLE else View.GONE
         populateTerminalPinnedApps()
+        populateTerminalNotifications()
+        populateTerminalNotificationApps()
+    }
+
+    private fun isNotificationAccessGranted(): Boolean {
+        return NotificationManagerCompat.getEnabledListenerPackages(requireContext())
+            .contains(requireContext().packageName)
+    }
+
+    private fun populateTerminalNotifications() {
+        binding.tvTerminalNotifications?.text = if (prefs.terminalNotificationsEnabled) "On" else "Off"
+        binding.flTerminalNotificationApps?.visibility = if (prefs.terminalMode && prefs.terminalNotificationsEnabled) View.VISIBLE else View.GONE
+    }
+
+    private fun populateTerminalNotificationApps() {
+        val count = prefs.terminalNotificationApps.size
+        binding.tvTerminalNotificationApps?.text = if (count == 0) "All Apps" else "$count apps"
+    }
+
+    private fun toggleTerminalNotifications() {
+        if (!prefs.terminalNotificationsEnabled) {
+            if (!isNotificationAccessGranted()) {
+                AlertDialog.Builder(requireContext())
+                    .setTitle("Notification Access Required")
+                    .setMessage("To display incoming notifications in the terminal, term_lunch needs Notification Access permission. Tap 'Open Settings' to enable it.")
+                    .setPositiveButton("Open Settings") { _, _ ->
+                        try {
+                            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                        } catch (e: Exception) {
+                            startActivity(Intent(Settings.ACTION_SETTINGS))
+                        }
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+                prefs.terminalNotificationsEnabled = true
+            } else {
+                prefs.terminalNotificationsEnabled = true
+                requireContext().showToast("Terminal notifications enabled")
+            }
+        } else {
+            prefs.terminalNotificationsEnabled = false
+            requireContext().showToast("Terminal notifications disabled")
+        }
+        populateTerminalNotifications()
+        populateTerminalNotificationApps()
+    }
+
+    private fun showNotificationAppsDialog() {
+        val apps = viewModel.appList.value?.filterIsInstance<AppModel.App>()?.sortedBy { it.appLabel.lowercase() } ?: emptyList()
+        if (apps.isEmpty()) {
+            requireContext().showToast("No apps available")
+            return
+        }
+
+        val appNames = apps.map { it.appLabel }.toTypedArray()
+        val currentSelected = prefs.terminalNotificationApps.toMutableSet()
+        val checkedItems = BooleanArray(apps.size) { i ->
+            currentSelected.contains(apps[i].appPackage)
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Select Notification Apps")
+            .setMultiChoiceItems(appNames, checkedItems) { _, which, isChecked ->
+                val pkg = apps[which].appPackage
+                if (isChecked) {
+                    currentSelected.add(pkg)
+                } else {
+                    currentSelected.remove(pkg)
+                }
+            }
+            .setNeutralButton("All Apps") { _, _ ->
+                prefs.terminalNotificationApps = emptySet()
+                populateTerminalNotificationApps()
+                requireContext().showToast("All apps allowed for notifications")
+            }
+            .setPositiveButton("Save") { _, _ ->
+                prefs.terminalNotificationApps = currentSelected
+                populateTerminalNotificationApps()
+                val msg = if (currentSelected.isEmpty()) "All apps allowed" else "${currentSelected.size} apps selected"
+                requireContext().showToast(msg)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun populateTerminalPinnedApps() {

@@ -56,6 +56,7 @@ import android.view.inputmethod.EditorInfo
 import androidx.recyclerview.widget.LinearLayoutManager
 import app.olauncher.helper.hideKeyboard
 import app.olauncher.helper.showKeyboard
+import app.olauncher.service.TerminalNotificationListenerService
 import app.olauncher.ui.terminal.TerminalCommandHandler
 import app.olauncher.ui.terminal.TerminalKeyboardView
 import app.olauncher.ui.terminal.TerminalLogAdapter
@@ -83,10 +84,20 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     private val terminalBroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "app.olauncher.RUN_TERMINAL_COMMAND") {
-                val command = intent.getStringExtra("command")
-                if (!command.isNullOrBlank()) {
-                    terminalCommandHandler?.execute(command)
+            when (intent?.action) {
+                "app.olauncher.RUN_TERMINAL_COMMAND" -> {
+                    val command = intent.getStringExtra("command")
+                    if (!command.isNullOrBlank()) {
+                        terminalCommandHandler?.execute(command)
+                    }
+                }
+                TerminalNotificationListenerService.ACTION_TERMINAL_NOTIFICATION -> {
+                    val appLabel = intent.getStringExtra(TerminalNotificationListenerService.EXTRA_APP_LABEL) ?: ""
+                    val packageName = intent.getStringExtra(TerminalNotificationListenerService.EXTRA_PACKAGE_NAME) ?: ""
+                    val title = intent.getStringExtra(TerminalNotificationListenerService.EXTRA_TITLE) ?: ""
+                    val text = intent.getStringExtra(TerminalNotificationListenerService.EXTRA_TEXT) ?: ""
+                    val time = intent.getLongExtra(TerminalNotificationListenerService.EXTRA_POST_TIME, System.currentTimeMillis())
+                    handleIncomingTerminalNotification(appLabel, packageName, title, text, time)
                 }
             }
         }
@@ -106,6 +117,12 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         viewModel = activity?.run {
             ViewModelProvider(this)[MainViewModel::class.java]
         } ?: throw Exception("Invalid Activity")
+
+        TerminalNotificationListenerService.liveNotificationCallback = { appLabel, packageName, title, text, time ->
+            activity?.runOnUiThread {
+                handleIncomingTerminalNotification(appLabel, packageName, title, text, time)
+            }
+        }
 
         deviceManager = context?.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
 
@@ -1051,7 +1068,10 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         }
 
         if (!isReceiverRegistered) {
-            val filter = IntentFilter("app.olauncher.RUN_TERMINAL_COMMAND")
+            val filter = IntentFilter().apply {
+                addAction("app.olauncher.RUN_TERMINAL_COMMAND")
+                addAction(TerminalNotificationListenerService.ACTION_TERMINAL_NOTIFICATION)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 requireContext().registerReceiver(terminalBroadcastReceiver, filter, Context.RECEIVER_EXPORTED)
             } else {
@@ -1059,6 +1079,29 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             }
             isReceiverRegistered = true
         }
+    }
+
+    private fun handleIncomingTerminalNotification(
+        appLabel: String,
+        packageName: String,
+        title: String,
+        text: String,
+        time: Long
+    ) {
+        if (!prefs.terminalNotificationsEnabled) return
+        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val timeStr = timeFormat.format(Date(time))
+        val msg = buildString {
+            append("[$timeStr 🔔 $appLabel] ")
+            if (title.isNotBlank()) {
+                append(title)
+                if (text.isNotBlank()) append(": ")
+            }
+            if (text.isNotBlank()) {
+                append(text)
+            }
+        }
+        terminalCommandHandler?.addNotificationLog(msg)
     }
 
     private fun refreshSuggestions() {
@@ -1103,6 +1146,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     }
 
     override fun onDestroyView() {
+        TerminalNotificationListenerService.liveNotificationCallback = null
         if (isReceiverRegistered) {
             try {
                 requireContext().unregisterReceiver(terminalBroadcastReceiver)

@@ -9,9 +9,11 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.Settings
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
+import androidx.core.app.NotificationManagerCompat
 import app.olauncher.BuildConfig
 import app.olauncher.data.AppModel
 import app.olauncher.data.Prefs
@@ -219,6 +221,10 @@ class TerminalCommandHandler(
         }
     }
 
+    fun addNotificationLog(message: String) {
+        callbacks.onAddLog(TerminalLogItem(message, TerminalItemType.SUCCESS))
+    }
+
     fun destroy() {
         if (sshTerminalManager.isConnected) {
             sshTerminalManager.disconnect()
@@ -315,6 +321,7 @@ class TerminalCommandHandler(
             "pin" -> handlePin(args)
             "unpin" -> handleUnpin(args)
             "battery" -> showBattery()
+            "notif", "notifications" -> handleNotificationCommand(args)
             "time", "date" -> showTimeAndDate()
             "device", "uname", "neofetch" -> showDeviceInfo()
             "alias" -> handleAlias(args)
@@ -1229,7 +1236,8 @@ class TerminalCommandHandler(
             "  unpin <app>     : Remove app from suggestion bar",
             "  theme [name]    : Switch theme (dracula, synthwave, tokyo, nord,",
             "                    gruvbox, solarized, cyberpunk, green, amber, red...)",
-            "  battery         : Battery level and status",
+            "  battery         : Battery level, charging rate, wattage, voltage & time remaining",
+            "  notif [on|off]  : In-terminal notifications (apps, settings, test)",
             "  device, uname   : Device hardware info & RAM",
             "  settings        : Open launcher settings",
             "  mode [gui|cli]  : Switch between Terminal and GUI mode",
@@ -1342,30 +1350,236 @@ class TerminalCommandHandler(
     private fun showBattery() {
         val ifilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
         val batteryStatus: Intent? = context.registerReceiver(null, ifilter)
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
 
         val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
-        val pct = (level * 100 / scale.toFloat()).toInt()
+        val pct = if (level >= 0 && scale > 0) (level * 100 / scale.toFloat()).toInt() else -1
 
         val status = batteryStatus?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
         val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+        val isFull = status == BatteryManager.BATTERY_STATUS_FULL
 
         val chargePlug = batteryStatus?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: -1
-        val usbCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_USB
-        val acCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_AC
-
-        val source = when {
-            usbCharge -> " (USB)"
-            acCharge -> " (AC)"
-            else -> ""
+        val source = when (chargePlug) {
+            BatteryManager.BATTERY_PLUGGED_AC -> "AC Adapter"
+            BatteryManager.BATTERY_PLUGGED_USB -> "USB Cable"
+            BatteryManager.BATTERY_PLUGGED_WIRELESS -> "Wireless Qi"
+            else -> if (isCharging) "Charging" else "Unplugged"
         }
 
-        callbacks.onAddLog(
-            TerminalLogItem(
-                "Battery: $pct% | ${if (isCharging) "Charging$source" else "Discharging"}",
-                TerminalItemType.OUTPUT
-            )
-        )
+        // 10-block visual battery gauge
+        val filledBlocks = if (pct >= 0) (pct / 10).coerceIn(0, 10) else 0
+        val emptyBlocks = 10 - filledBlocks
+        val progressBar = "█".repeat(filledBlocks) + "░".repeat(emptyBlocks)
+
+        // Voltage in millivolts and volts
+        val voltageMv = batteryStatus?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, -1) ?: -1
+        val voltageStr = if (voltageMv > 0) {
+            val volts = voltageMv / 1000.0
+            String.format(Locale.US, "%.2f V (%d mV)", volts, voltageMv)
+        } else {
+            "N/A"
+        }
+
+        // Temperature in tenths of Celsius
+        val tempTenths = batteryStatus?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1) ?: -1
+        val tempStr = if (tempTenths > 0) {
+            val tempC = tempTenths / 10.0
+            val tempF = (tempC * 9.0 / 5.0) + 32.0
+            String.format(Locale.US, "%.1f °C (%.1f °F)", tempC, tempF)
+        } else {
+            "N/A"
+        }
+
+        // Health
+        val healthCode = batteryStatus?.getIntExtra(BatteryManager.EXTRA_HEALTH, BatteryManager.BATTERY_HEALTH_UNKNOWN)
+        val healthStr = when (healthCode) {
+            BatteryManager.BATTERY_HEALTH_GOOD -> "Good"
+            BatteryManager.BATTERY_HEALTH_OVERHEAT -> "Overheat ⚠️"
+            BatteryManager.BATTERY_HEALTH_DEAD -> "Dead ⚠️"
+            BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE -> "Over Voltage ⚠️"
+            BatteryManager.BATTERY_HEALTH_COLD -> "Cold ❄️"
+            else -> "Normal"
+        }
+
+        // Technology
+        val tech = batteryStatus?.getStringExtra(BatteryManager.EXTRA_TECHNOLOGY) ?: "Li-poly"
+
+        // Current in microamperes
+        val currentNowMicro = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW) ?: 0
+        val chargeCounterMicro = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER) ?: 0
+
+        // Remaining capacity in mAh
+        val capacityMah = if (chargeCounterMicro > 0) chargeCounterMicro / 1000 else 0
+
+        // Current in mA
+        val currentMa = if (currentNowMicro != 0 && currentNowMicro != Int.MIN_VALUE && currentNowMicro != Int.MAX_VALUE) {
+            kotlin.math.abs(currentNowMicro) / 1000
+        } else {
+            0
+        }
+
+        // Wattage: P = V * I
+        val powerWatts = if (voltageMv > 0 && currentMa > 0) {
+            (voltageMv / 1000.0) * (currentMa / 1000.0)
+        } else {
+            0.0
+        }
+
+        val rateStr = when {
+            isFull -> "Full (Trickle)"
+            isCharging && currentMa > 0 -> String.format(Locale.US, "+%d mA (%.2f W)", currentMa, powerWatts)
+            !isCharging && currentMa > 0 -> String.format(Locale.US, "-%d mA (%.2f W)", currentMa, powerWatts)
+            isCharging -> "Charging"
+            else -> "Discharging"
+        }
+
+        // Remaining time calculation
+        var timeRemainingStr: String
+        if (isFull) {
+            timeRemainingStr = "Fully Charged (100%)"
+        } else if (isCharging) {
+            var chargeTimeMs = -1L
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                try {
+                    chargeTimeMs = bm?.computeChargeTimeRemaining() ?: -1L
+                } catch (e: Exception) {
+                    chargeTimeMs = -1L
+                }
+            }
+            if (chargeTimeMs > 0) {
+                val hours = chargeTimeMs / (1000 * 60 * 60)
+                val mins = (chargeTimeMs / (1000 * 60)) % 60
+                timeRemainingStr = if (hours > 0) "${hours}h ${mins}m until full" else "${mins}m until full"
+            } else if (currentMa > 0 && scale > 0 && level >= 0) {
+                val missingPct = (100 - pct).coerceAtLeast(0)
+                val estimatedCapacityTotal = if (capacityMah > 0 && pct > 0) (capacityMah * 100) / pct else 4500
+                val missingMah = (estimatedCapacityTotal * missingPct) / 100
+                val estHours = missingMah.toDouble() / currentMa.toDouble()
+                val totalMins = (estHours * 60).toInt().coerceIn(1, 600)
+                val h = totalMins / 60
+                val m = totalMins % 60
+                timeRemainingStr = if (h > 0) "~${h}h ${m}m until full" else "~${m}m until full"
+            } else {
+                timeRemainingStr = "Charging..."
+            }
+        } else {
+            // Discharging estimate
+            if (capacityMah > 0 && currentMa > 0) {
+                val estHours = capacityMah.toDouble() / currentMa.toDouble()
+                val totalMins = (estHours * 60).toInt().coerceIn(1, 6000)
+                val h = totalMins / 60
+                val m = totalMins % 60
+                timeRemainingStr = if (h > 0) "~${h}h ${m}m remaining" else "~${m}m remaining"
+            } else {
+                timeRemainingStr = "Normal discharge"
+            }
+        }
+
+        callbacks.onAddLog(TerminalLogItem("── Battery Status ───────────────────", TerminalItemType.BANNER))
+        callbacks.onAddLog(TerminalLogItem("Level:       [$progressBar] $pct%", TerminalItemType.OUTPUT))
+        callbacks.onAddLog(TerminalLogItem("State:       ${if (isFull) "Full" else if (isCharging) "Charging ($source)" else "Discharging"}", TerminalItemType.OUTPUT))
+        callbacks.onAddLog(TerminalLogItem("Rate:        $rateStr", TerminalItemType.OUTPUT))
+        callbacks.onAddLog(TerminalLogItem("Voltage:     $voltageStr", TerminalItemType.OUTPUT))
+        callbacks.onAddLog(TerminalLogItem("Remaining:   $timeRemainingStr", TerminalItemType.OUTPUT))
+        if (capacityMah > 0) {
+            callbacks.onAddLog(TerminalLogItem("Capacity:    ~$capacityMah mAh remaining", TerminalItemType.OUTPUT))
+        }
+        callbacks.onAddLog(TerminalLogItem("Temperature: $tempStr", TerminalItemType.OUTPUT))
+        callbacks.onAddLog(TerminalLogItem("Health:      $healthStr ($tech)", TerminalItemType.OUTPUT))
+        callbacks.onAddLog(TerminalLogItem("─────────────────────────────────────", TerminalItemType.BANNER))
+    }
+
+    private fun handleNotificationCommand(args: List<String>) {
+        if (args.isEmpty()) {
+            val isEnabled = prefs.terminalNotificationsEnabled
+            val isGranted = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+            val appsCount = prefs.terminalNotificationApps.size
+            val appsStr = if (appsCount == 0) "All Apps" else "$appsCount selected apps"
+
+            callbacks.onAddLog(TerminalLogItem("── Terminal Notifications ───────────", TerminalItemType.BANNER))
+            callbacks.onAddLog(TerminalLogItem("Status:      ${if (isEnabled) "Enabled (Active)" else "Disabled"}", TerminalItemType.OUTPUT))
+            callbacks.onAddLog(TerminalLogItem("Permission:  ${if (isGranted) "Granted" else "Missing (tap Settings to enable)"}", if (isGranted) TerminalItemType.OUTPUT else TerminalItemType.ERROR))
+            callbacks.onAddLog(TerminalLogItem("Filter:      $appsStr", TerminalItemType.OUTPUT))
+            callbacks.onAddLog(TerminalLogItem("Commands:", TerminalItemType.OUTPUT))
+            callbacks.onAddLog(TerminalLogItem("  notif on       : Enable terminal notifications", TerminalItemType.OUTPUT))
+            callbacks.onAddLog(TerminalLogItem("  notif off      : Disable terminal notifications", TerminalItemType.OUTPUT))
+            callbacks.onAddLog(TerminalLogItem("  notif apps     : List allowed notification apps", TerminalItemType.OUTPUT))
+            callbacks.onAddLog(TerminalLogItem("  notif test     : Send a test notification", TerminalItemType.OUTPUT))
+            callbacks.onAddLog(TerminalLogItem("  notif settings : Open Android Notification Access", TerminalItemType.OUTPUT))
+            callbacks.onAddLog(TerminalLogItem("─────────────────────────────────────", TerminalItemType.BANNER))
+            return
+        }
+
+        when (args[0].lowercase()) {
+            "on", "enable" -> {
+                prefs.terminalNotificationsEnabled = true
+                val isGranted = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+                if (!isGranted) {
+                    callbacks.onAddLog(TerminalLogItem("Terminal notifications enabled, but Notification Access is not granted yet.", TerminalItemType.ERROR))
+                    callbacks.onAddLog(TerminalLogItem("Opening Notification Access settings...", TerminalItemType.OUTPUT))
+                    openNotificationListenerSettings()
+                } else {
+                    callbacks.onAddLog(TerminalLogItem("Terminal notifications enabled! Incoming messages will appear in terminal.", TerminalItemType.SUCCESS))
+                }
+            }
+            "off", "disable" -> {
+                prefs.terminalNotificationsEnabled = false
+                callbacks.onAddLog(TerminalLogItem("Terminal notifications disabled.", TerminalItemType.OUTPUT))
+            }
+            "settings", "perm", "permission" -> {
+                callbacks.onAddLog(TerminalLogItem("Opening Notification Access settings...", TerminalItemType.OUTPUT))
+                openNotificationListenerSettings()
+            }
+            "apps", "list" -> {
+                val apps = prefs.terminalNotificationApps
+                if (apps.isEmpty()) {
+                    callbacks.onAddLog(TerminalLogItem("All apps are allowed. (Configure specific apps in Settings)", TerminalItemType.OUTPUT))
+                } else {
+                    callbacks.onAddLog(TerminalLogItem("Allowed Notification Apps (${apps.size}):", TerminalItemType.BANNER))
+                    val pm = context.packageManager
+                    for (pkg in apps) {
+                        val label = try {
+                            pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+                        } catch (e: Exception) {
+                            pkg
+                        }
+                        callbacks.onAddLog(TerminalLogItem("  • $label ($pkg)", TerminalItemType.OUTPUT))
+                    }
+                }
+            }
+            "test" -> {
+                val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                callbacks.onAddLog(
+                    TerminalLogItem(
+                        "[$timeStr 🔔 WhatsApp] Naim: Hey baby! Terminal notifications are working smoothly!",
+                        TerminalItemType.SUCCESS
+                    )
+                )
+            }
+            else -> {
+                callbacks.onAddLog(TerminalLogItem("Usage: notif [on|off|apps|test|settings]", TerminalItemType.ERROR))
+            }
+        }
+    }
+
+    private fun openNotificationListenerSettings() {
+        try {
+            val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            try {
+                val intent = Intent(Settings.ACTION_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+            } catch (err: Exception) {
+                callbacks.onAddLog(TerminalLogItem("Could not open settings: ${err.message}", TerminalItemType.ERROR))
+            }
+        }
     }
 
     private fun showTimeAndDate() {
@@ -1645,7 +1859,7 @@ class TerminalCommandHandler(
         val commands = listOf(
             "help", "apps", "ssh", "call", "whatsapp", "chrome",
             "cd", "pwd", "ls", "open", "info", "uninstall",
-            "history", "pin", "unpin", "theme", "termux", "battery", "time", "date",
+            "history", "pin", "unpin", "theme", "termux", "battery", "notif", "time", "date",
             "device", "alias", "search", "settings", "mode", "clear"
         )
 

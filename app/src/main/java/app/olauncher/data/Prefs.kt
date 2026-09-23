@@ -56,6 +56,8 @@ class Prefs(context: Context) {
     private val TERMINAL_SSH_PORT = "TERMINAL_SSH_PORT"
     private val TERMINAL_SSH_USER = "TERMINAL_SSH_USER"
     private val TERMINAL_SSH_PASS = "TERMINAL_SSH_PASS"
+    private val TERMINAL_NOTIFICATIONS_ENABLED = "TERMINAL_NOTIFICATIONS_ENABLED"
+    private val TERMINAL_NOTIFICATION_APPS = "TERMINAL_NOTIFICATION_APPS"
 
     private val APP_NAME_1 = "APP_NAME_1"
     private val APP_NAME_2 = "APP_NAME_2"
@@ -700,4 +702,12 @@ class Prefs(context: Context) {
     var terminalSshPass: String
         get() = prefs.getString(TERMINAL_SSH_PASS, "") ?: ""
         set(value) = prefs.edit { putString(TERMINAL_SSH_PASS, value) }
+
+    var terminalNotificationsEnabled: Boolean
+        get() = prefs.getBoolean(TERMINAL_NOTIFICATIONS_ENABLED, false)
+        set(value) = prefs.edit { putBoolean(TERMINAL_NOTIFICATIONS_ENABLED, value) }
+
+    var terminalNotificationApps: Set<String>
+        get() = prefs.getStringSet(TERMINAL_NOTIFICATION_APPS, emptySet()) ?: emptySet()
+        set(value) = prefs.edit { putStringSet(TERMINAL_NOTIFICATION_APPS, value) }
 }
