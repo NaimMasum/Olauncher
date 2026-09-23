@@ -327,7 +327,7 @@ echo "\033[1;32m==========================================\033[0m"
     fun attachToView(view: TerminalView) {
         this.terminalView = view
         view.setTerminalViewClient(viewClient)
-        view.setTextSize(13)
+        view.setTextSize(16)
         view.setTypeface(Typeface.MONOSPACE)
         view.setTerminalCursorBlinkerRate(600)
         view.setTerminalCursorBlinkerState(true, true)
@@ -424,6 +424,14 @@ echo "\033[1;32m==========================================\033[0m"
 
     fun sendCtrlC() {
         currentSession?.write(byteArrayOf(0x03), 0, 1) // SIGINT (^C)
+    }
+
+    fun sendCtrlKey(char: Char) {
+        val lower = char.lowercaseChar()
+        if (lower in 'a'..'z') {
+            val ctrlByte = (lower.code - 'a'.code + 1).toByte()
+            currentSession?.write(byteArrayOf(ctrlByte), 0, 1)
+        }
     }
 
     fun sendUp() {

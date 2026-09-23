@@ -18,7 +18,7 @@
         android:splitMotionEvents="true">
 
         <TextView android:id="@+id/key_esc" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="11sp" android:text="ESC" />
-        <TextView android:id="@+id/key_ctrl_c" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="11sp" android:text="^C" />
+        <TextView android:id="@+id/key_ctrl" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="11sp" android:text="CTRL" />
         <TextView android:id="@+id/key_tab" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="11sp" android:text="TAB" />
         <TextView android:id="@+id/key_up" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="12sp" android:text="▲" />
         <TextView android:id="@+id/key_down" style="@style/TerminalKey" android:layout_height="32dp" android:textSize="12sp" android:text="▼" />

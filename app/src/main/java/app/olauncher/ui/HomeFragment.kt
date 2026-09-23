@@ -1058,6 +1058,25 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
                     terminalCommandHandler?.sendCtrlC()
                 }
             },
+            onCtrlKeyPressed = { char ->
+                if (prefs.terminalUsePty) {
+                    terminalSessionManager?.sendCtrlKey(char)
+                } else {
+                    when (char.lowercaseChar()) {
+                        'c' -> terminalCommandHandler?.sendCtrlC()
+                        'l' -> terminalLogAdapter?.clear()
+                        'u' -> binding.etTerminalInput.setText("")
+                        'd' -> {
+                            if (binding.etTerminalInput.text.isNullOrEmpty()) {
+                                prefs.terminalMode = false
+                                populateHomeScreen(true)
+                            } else {
+                                binding.etTerminalInput.setText("")
+                            }
+                        }
+                    }
+                }
+            },
             onUpPressed = {
                 if (prefs.terminalUsePty) {
                     terminalSessionManager?.sendUp()

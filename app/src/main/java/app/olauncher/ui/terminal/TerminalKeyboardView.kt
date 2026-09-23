@@ -22,6 +22,7 @@ class TerminalKeyboardView(
     private val onTabPressed: () -> Unit,
     private val onAppsPressed: () -> Unit,
     private val onCtrlCPressed: () -> Unit = {},
+    private val onCtrlKeyPressed: (Char) -> Unit = {},
     private val onUpPressed: () -> Unit = {},
     private val onDownPressed: () -> Unit = {},
     private val onEscPressed: () -> Unit = {},
@@ -44,18 +45,22 @@ class TerminalKeyboardView(
     private var isShifted = false
     private var isCapsLock = false
     private var isSymbolsMode = false
+    private var isCtrlActive = false
     private var lastShiftPressTime = 0L
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // Fast drawables for Shift and Sym active/normal states
+    // Fast drawables for Shift, Sym, and Ctrl active/normal states
     private var shiftNormalDrawable: Drawable? = null
     private var shiftActiveDrawable: Drawable? = null
     private var symNormalDrawable: Drawable? = null
     private var symActiveDrawable: Drawable? = null
+    private var ctrlNormalDrawable: Drawable? = null
+    private var ctrlActiveDrawable: Drawable? = null
 
     private val shiftKeyView: TextView? by lazy { rootView.findViewById(R.id.key_shift) }
     private val symKeyView: TextView? by lazy { rootView.findViewById(R.id.key_sym) }
+    private val ctrlKeyView: TextView? by lazy { rootView.findViewById(R.id.key_ctrl) }
 
     init {
         setupAccessoryKeys()
@@ -199,7 +204,6 @@ class TerminalKeyboardView(
     private fun setupAccessoryKeys() {
         val instantAccessories = listOf(
             R.id.key_esc to { onEscPressed() },
-            R.id.key_ctrl_c to { onCtrlCPressed() },
             R.id.key_tab to { onTabPressed() },
             R.id.key_pipe to { appendChar("| ") },
             R.id.key_tilde to { appendChar("~") }
@@ -209,6 +213,15 @@ class TerminalKeyboardView(
             rootView.findViewById<TextView>(id)?.let { tv ->
                 accessoryKeys.add(tv)
                 bindInstantKey(tv, action)
+            }
+        }
+
+        // CTRL modifier toggle
+        ctrlKeyView?.let { ctrl ->
+            accessoryKeys.add(ctrl)
+            bindInstantKey(ctrl) {
+                isCtrlActive = !isCtrlActive
+                updateKeyboardDisplay()
             }
         }
 
@@ -301,7 +314,15 @@ class TerminalKeyboardView(
                         MotionEvent.ACTION_DOWN -> {
                             v.isPressed = true
                             performFastHaptic(v, false)
-                            if (isSymbolsMode) {
+                            if (isCtrlActive) {
+                                isCtrlActive = false
+                                updateKeyboardDisplay()
+                                val ch = holder.letter.lowercase().firstOrNull() ?: 'c'
+                                onCtrlKeyPressed(ch)
+                                if (ch == 'c') {
+                                    onCtrlCPressed()
+                                }
+                            } else if (isSymbolsMode) {
                                 appendChar(sym)
                             } else {
                                 val charToAppend = if (isShifted) holder.upper else holder.letter
@@ -456,6 +477,17 @@ class TerminalKeyboardView(
                 sym.setTextColor(if (isActive) theme.bgColor else theme.textColor)
             }
         }
+
+        // 4. Update Ctrl key label and state
+        ctrlKeyView?.let { ctrl ->
+            ctrl.text = if (isCtrlActive) "[CTRL]" else "CTRL"
+            val theme = currentTheme
+            if (theme != null) {
+                val isActive = isCtrlActive
+                ctrl.background = if (isActive) ctrlActiveDrawable else ctrlNormalDrawable
+                ctrl.setTextColor(if (isActive) theme.bgColor else theme.accentColor)
+            }
+        }
     }
 
     private fun appendChar(char: String) {
@@ -485,22 +517,26 @@ class TerminalKeyboardView(
             return RippleDrawable(rippleColor, normalDrawable, null)
         }
 
-        // Pre-create Shift and Sym active/normal drawables so toggling is instant
+        // Pre-create Shift, Sym, and Ctrl active/normal drawables so toggling is instant
         shiftNormalDrawable = createRippleDrawable(defaultBgColor)
         shiftActiveDrawable = createRippleDrawable(promptColor)
         symNormalDrawable = createRippleDrawable(defaultBgColor)
         symActiveDrawable = createRippleDrawable(promptColor)
+        ctrlNormalDrawable = createRippleDrawable(accessoryBgColor)
+        ctrlActiveDrawable = createRippleDrawable(promptColor)
 
         for (tv in allKeys) {
             val isAccessory = accessoryKeys.contains(tv)
             val isShiftKey = tv.id == R.id.key_shift
             val isSymKey = tv.id == R.id.key_sym
+            val isCtrlKey = tv.id == R.id.key_ctrl
 
             val textCol = when {
                 isShiftKey && isShifted -> theme.bgColor
                 isSymKey && isSymbolsMode -> theme.bgColor
+                isCtrlKey && isCtrlActive -> theme.bgColor
                 tv.id == R.id.key_enter || tv.id == R.id.key_apps -> promptColor
-                tv.id == R.id.key_ctrl_c -> theme.errorColor
+                isCtrlKey -> accentColor
                 isAccessory -> accentColor
                 else -> textColor
             }
@@ -509,6 +545,7 @@ class TerminalKeyboardView(
             tv.background = when {
                 isShiftKey -> if (isShifted) shiftActiveDrawable else shiftNormalDrawable
                 isSymKey -> if (isSymbolsMode) symActiveDrawable else symNormalDrawable
+                isCtrlKey -> if (isCtrlActive) ctrlActiveDrawable else ctrlNormalDrawable
                 isAccessory -> createRippleDrawable(accessoryBgColor)
                 else -> createRippleDrawable(defaultBgColor)
             }
