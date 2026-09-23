@@ -17,3 +17,10 @@
 .cxx
 google-services.json
 /apks/
+
+# Screenshots & Device Captures (never push to GitHub)
+screenshot*
+screen_*
+/screenshots/
+/*.png
+!app/src/main/ic_launcher-playstore.png
