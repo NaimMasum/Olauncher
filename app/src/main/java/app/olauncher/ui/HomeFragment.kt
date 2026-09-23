@@ -53,10 +53,15 @@ import app.olauncher.listener.ViewSwipeTouchListener
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.inputmethod.EditorInfo
+import androidx.recyclerview.widget.LinearLayoutManager
 import app.olauncher.helper.hideKeyboard
 import app.olauncher.helper.showKeyboard
+import app.olauncher.ui.terminal.TerminalCommandHandler
 import app.olauncher.ui.terminal.TerminalKeyboardView
-import app.olauncher.ui.terminal.TerminalSessionManager
+import app.olauncher.ui.terminal.TerminalLogAdapter
+import app.olauncher.ui.terminal.TerminalLogItem
+import app.olauncher.ui.terminal.TerminalSuggestion
+import app.olauncher.ui.terminal.TerminalSuggestionAdapter
 import app.olauncher.ui.terminal.TerminalTheme
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -68,7 +73,9 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private lateinit var viewModel: MainViewModel
     private lateinit var deviceManager: DevicePolicyManager
 
-    private var terminalSessionManager: TerminalSessionManager? = null
+    private var terminalLogAdapter: TerminalLogAdapter? = null
+    private var terminalSuggestionAdapter: TerminalSuggestionAdapter? = null
+    private var terminalCommandHandler: TerminalCommandHandler? = null
     private var terminalKeyboardView: TerminalKeyboardView? = null
     private var installedAppsList: List<AppModel.App> = emptyList()
     private var isTerminalInitialized = false
@@ -79,7 +86,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             if (intent?.action == "app.olauncher.RUN_TERMINAL_COMMAND") {
                 val command = intent.getStringExtra("command")
                 if (!command.isNullOrBlank()) {
-                    terminalSessionManager?.write(command + "\n")
+                    terminalCommandHandler?.execute(command)
                 }
             }
         }
@@ -116,11 +123,13 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         if (prefs.showStatusBar) showStatusBar()
         else hideStatusBar()
         if (prefs.terminalMode) {
-            binding.terminalView.requestFocus()
+            binding.etTerminalInput.requestFocus()
             if (prefs.terminalKeyboardVisible) {
-                binding.terminalView.hideKeyboard()
+                binding.etTerminalInput.showSoftInputOnFocus = false
+                binding.etTerminalInput.hideKeyboard()
             } else if (prefs.autoShowKeyboard) {
-                binding.terminalView.showKeyboard()
+                binding.etTerminalInput.showSoftInputOnFocus = true
+                binding.etTerminalInput.showKeyboard()
             }
         }
     }
@@ -249,7 +258,9 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         }
         viewModel.appList.observe(viewLifecycleOwner) { list ->
             installedAppsList = list?.filterIsInstance<AppModel.App>() ?: emptyList()
-            terminalSessionManager?.updateAppsListScript(installedAppsList)
+            if (prefs.terminalMode && isTerminalInitialized) {
+                refreshSuggestions()
+            }
         }
         // Home button for recents feature disabled
         // viewModel.showRecentApps.observe(viewLifecycleOwner) {
@@ -792,82 +803,201 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
         val currentTheme = TerminalTheme.fromId(prefs.terminalTheme)
 
-        terminalSessionManager = TerminalSessionManager(
+        terminalLogAdapter = TerminalLogAdapter(
+            theme = currentTheme,
+            onAppClicked = { app ->
+                viewModel.selectedApp(app, Constants.FLAG_LAUNCH_APP)
+            },
+            onItemClicked = { text ->
+                binding.etTerminalInput.append(text)
+            }
+        )
+        binding.rvTerminalLog.layoutManager = LinearLayoutManager(requireContext()).apply {
+            stackFromEnd = true
+        }
+        binding.rvTerminalLog.adapter = terminalLogAdapter
+
+        terminalSuggestionAdapter = TerminalSuggestionAdapter(
+            theme = currentTheme,
+            onSuggestionClicked = { suggestion ->
+                if (suggestion.isAction) {
+                    showPinAppDialog()
+                } else if (suggestion.executeImmediately) {
+                    terminalCommandHandler?.execute(suggestion.commandToFill)
+                    binding.etTerminalInput.setText("")
+                } else {
+                    binding.etTerminalInput.setText(suggestion.commandToFill)
+                    binding.etTerminalInput.setSelection(suggestion.commandToFill.length)
+                }
+            }
+        )
+        binding.rvTerminalSuggestions.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.rvTerminalSuggestions.adapter = terminalSuggestionAdapter
+
+        terminalCommandHandler = TerminalCommandHandler(
             context = requireContext(),
             prefs = prefs,
-            callbacks = object : TerminalSessionManager.Callbacks {
+            callbacks = object : TerminalCommandHandler.Callbacks {
+                override fun onAddLog(item: TerminalLogItem) {
+                    requireActivity().runOnUiThread {
+                        terminalLogAdapter?.addItem(item)
+                        binding.rvTerminalLog.scrollToPosition(terminalLogAdapter?.itemCount?.minus(1) ?: 0)
+                    }
+                }
+
+                override fun onClearLogs() {
+                    requireActivity().runOnUiThread {
+                        terminalLogAdapter?.clear()
+                    }
+                }
+
+                override fun onLaunchApp(app: AppModel.App) {
+                    requireActivity().runOnUiThread {
+                        viewModel.selectedApp(app, Constants.FLAG_LAUNCH_APP)
+                    }
+                }
+
+                override fun onThemeChanged(theme: TerminalTheme) {
+                    requireActivity().runOnUiThread {
+                        applyTerminalTheme(theme)
+                    }
+                }
+
+                override fun onSwitchLauncherMode(terminalMode: Boolean) {
+                    requireActivity().runOnUiThread {
+                        prefs.terminalMode = terminalMode
+                        populateHomeScreen(true)
+                    }
+                }
+
                 override fun onOpenSettings() {
-                    try {
-                        findNavController().navigate(R.id.action_mainFragment_to_settingsFragment)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
+                    requireActivity().runOnUiThread {
+                        try {
+                            findNavController().navigate(R.id.action_mainFragment_to_settingsFragment)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
                     }
-                }
-
-                override fun onOpenAppsDrawer() {
-                    try {
-                        findNavController().navigate(R.id.action_mainFragment_to_appListFragment)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
-
-                override fun onSwitchToGui() {
-                    prefs.terminalMode = false
-                    populateHomeScreen(true)
                 }
 
                 override fun getInstalledApps(): List<AppModel.App> {
                     return installedAppsList
                 }
+
+                override fun onPinnedAppsChanged() {
+                    requireActivity().runOnUiThread {
+                        refreshSuggestions()
+                    }
+                }
+
+                override fun onPathChanged(displayPath: String) {
+                    requireActivity().runOnUiThread {
+                        binding.tvTerminalPrompt.text = terminalCommandHandler?.getPromptText() ?: "naim@android:$ "
+                    }
+                }
+
+                override fun onRunningStateChanged(isRunning: Boolean) {
+                    requireActivity().runOnUiThread {
+                        if (isRunning) {
+                            binding.tvTerminalPrompt.text = "[busy] "
+                        } else {
+                            binding.tvTerminalPrompt.text = terminalCommandHandler?.getPromptText() ?: "naim@android:$ "
+                        }
+                    }
+                }
             }
         )
 
-        terminalSessionManager?.attachToView(binding.terminalView)
-        terminalSessionManager?.updateAppsListScript(installedAppsList)
+        binding.etTerminalInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_NULL) {
+                val command = binding.etTerminalInput.text.toString()
+                if (command.isNotBlank()) {
+                    terminalCommandHandler?.execute(command)
+                    binding.etTerminalInput.setText("")
+                }
+                true
+            } else {
+                false
+            }
+        }
+
+        binding.etTerminalInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                refreshSuggestions()
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
 
         terminalKeyboardView = TerminalKeyboardView(
             rootView = binding.includedKeyboard.llKeyboardRoot,
             onSendInput = { text ->
-                terminalSessionManager?.write(text)
+                val start = binding.etTerminalInput.selectionStart.coerceAtLeast(0)
+                val end = binding.etTerminalInput.selectionEnd.coerceAtLeast(0)
+                binding.etTerminalInput.text.replace(kotlin.math.min(start, end), kotlin.math.max(start, end), text)
             },
             onSendBackspace = {
-                terminalSessionManager?.sendBackspace()
-            },
-            onEnterPressed = {
-                terminalSessionManager?.sendEnter()
-            },
-            onTabPressed = {
-                terminalSessionManager?.sendTab()
-            },
-            onAppsPressed = {
-                try {
-                    findNavController().navigate(R.id.action_mainFragment_to_appListFragment)
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                val start = binding.etTerminalInput.selectionStart
+                val end = binding.etTerminalInput.selectionEnd
+                if (start != end) {
+                    binding.etTerminalInput.text.delete(kotlin.math.min(start, end), kotlin.math.max(start, end))
+                } else if (start > 0) {
+                    binding.etTerminalInput.text.delete(start - 1, start)
                 }
             },
+            onEnterPressed = {
+                val command = binding.etTerminalInput.text.toString()
+                if (command.isNotBlank()) {
+                    terminalCommandHandler?.execute(command)
+                    binding.etTerminalInput.setText("")
+                }
+            },
+            onTabPressed = {
+                val query = binding.etTerminalInput.text.toString()
+                val suggestions = terminalCommandHandler?.getSuggestions(query) ?: emptyList()
+                if (suggestions.isNotEmpty()) {
+                    val first = suggestions[0]
+                    if (first.executeImmediately) {
+                        terminalCommandHandler?.execute(first.commandToFill)
+                        binding.etTerminalInput.setText("")
+                    } else {
+                        binding.etTerminalInput.setText(first.commandToFill)
+                        binding.etTerminalInput.setSelection(first.commandToFill.length)
+                    }
+                }
+            },
+            onAppsPressed = {
+                terminalCommandHandler?.execute("apps")
+            },
             onCtrlCPressed = {
-                terminalSessionManager?.sendCtrlC()
+                terminalCommandHandler?.sendCtrlC()
             },
             onUpPressed = {
-                terminalSessionManager?.sendUp()
+                terminalCommandHandler?.getPreviousCommand()?.let {
+                    binding.etTerminalInput.setText(it)
+                    binding.etTerminalInput.setSelection(it.length)
+                }
             },
             onDownPressed = {
-                terminalSessionManager?.sendDown()
+                terminalCommandHandler?.getNextCommand()?.let {
+                    binding.etTerminalInput.setText(it)
+                    binding.etTerminalInput.setSelection(it.length)
+                }
             },
             onLeftPressed = {
-                terminalSessionManager?.sendLeft()
+                val pos = (binding.etTerminalInput.selectionStart - 1).coerceAtLeast(0)
+                binding.etTerminalInput.setSelection(pos)
             },
             onRightPressed = {
-                terminalSessionManager?.sendRight()
+                val pos = (binding.etTerminalInput.selectionStart + 1).coerceAtMost(binding.etTerminalInput.text?.length ?: 0)
+                binding.etTerminalInput.setSelection(pos)
             },
             onEscPressed = {
-                terminalSessionManager?.sendEsc()
+                binding.etTerminalInput.setText("")
             }
         )
 
-        // Top Bar: Clock, Date, Settings, Apps, Mode Toggle, Keyboard Toggle
+        // Top Bar: Clock, Date, Settings, Apps, Mode Toggle
         binding.tcTerminalClock.setOnClickListener { openClockApp() }
         binding.tcTerminalDate.setOnClickListener { openCalendarApp() }
         binding.btnTerminalSettings.setOnClickListener {
@@ -878,11 +1008,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             }
         }
         binding.btnTerminalApps.setOnClickListener {
-            try {
-                findNavController().navigate(R.id.action_mainFragment_to_appListFragment)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            terminalCommandHandler?.execute("apps")
         }
         binding.btnToggleMode.setOnClickListener {
             prefs.terminalMode = false
@@ -892,11 +1018,11 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         fun updateKeyboardVisibility(visible: Boolean) {
             binding.includedKeyboard.llKeyboardRoot.visibility = if (visible) View.VISIBLE else View.GONE
             binding.btnToggleKeyboard.text = if (visible) "[KB]" else "[kb]"
+            binding.etTerminalInput.showSoftInputOnFocus = !visible
             if (visible) {
-                binding.terminalView.hideKeyboard()
+                binding.etTerminalInput.hideKeyboard()
             } else {
-                binding.terminalView.requestFocus()
-                binding.terminalView.showKeyboard()
+                binding.etTerminalInput.showKeyboard()
             }
         }
 
@@ -907,14 +1033,23 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             updateKeyboardVisibility(prefs.terminalKeyboardVisible)
         }
 
-        binding.terminalView.setOnClickListener {
-            binding.terminalView.requestFocus()
+        binding.tvTerminalPrompt.setOnLongClickListener {
+            try {
+                findNavController().navigate(R.id.action_mainFragment_to_settingsFragment)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            true
+        }
+
+        binding.terminalLayout.setOnClickListener {
+            binding.etTerminalInput.requestFocus()
             if (!prefs.terminalKeyboardVisible) {
-                binding.terminalView.showKeyboard()
+                binding.etTerminalInput.showKeyboard()
             }
         }
 
-        applyTerminalTheme(currentTheme)
+        refreshSuggestions()
 
         ViewCompat.setOnApplyWindowInsetsListener(binding.terminalLayout) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -936,15 +1071,46 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         }
     }
 
+    private fun refreshSuggestions() {
+        if (!isTerminalInitialized) return
+        val query = binding.etTerminalInput.text?.toString() ?: ""
+        val suggestions = terminalCommandHandler?.getSuggestions(query) ?: emptyList()
+        terminalSuggestionAdapter?.setSuggestions(suggestions)
+        binding.rvTerminalSuggestions.visibility = if (suggestions.isNotEmpty()) View.VISIBLE else View.GONE
+    }
+
+    private fun showPinAppDialog() {
+        val apps = installedAppsList.sortedBy { it.appLabel.lowercase() }
+        if (apps.isEmpty()) {
+            Toast.makeText(requireContext(), "No apps available yet", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val appNames = apps.map { it.appLabel }.toTypedArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle("Add App to Suggestion Bar")
+            .setItems(appNames) { _, which ->
+                val selected = apps[which]
+                terminalCommandHandler?.pinApp(selected.appLabel)
+                refreshSuggestions()
+                Toast.makeText(requireContext(), "Pinned ${selected.appLabel}", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun applyTerminalTheme(theme: TerminalTheme) {
+        terminalLogAdapter?.setTheme(theme)
+        terminalSuggestionAdapter?.setTheme(theme)
         terminalKeyboardView?.applyTheme(theme)
-        terminalSessionManager?.applyTheme(theme)
         binding.terminalLayout.setBackgroundColor(theme.bgColor)
         binding.tcTerminalClock.setTextColor(theme.accentColor)
         binding.tcTerminalDate.setTextColor(theme.secondaryColor)
         binding.btnTerminalSettings.setTextColor(theme.accentColor)
         binding.btnTerminalApps.setTextColor(theme.promptColor)
         binding.btnToggleMode.setTextColor(theme.promptColor)
+        binding.tvTerminalPrompt.text = terminalCommandHandler?.getPromptText() ?: "naim@android:$ "
+        binding.etTerminalInput.setTextColor(theme.textColor)
+        binding.etTerminalInput.setHintTextColor(theme.secondaryColor)
         binding.btnToggleKeyboard.setTextColor(theme.accentColor)
     }
 
@@ -957,8 +1123,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             }
             isReceiverRegistered = false
         }
-        terminalSessionManager?.destroy()
-        terminalSessionManager = null
         super.onDestroyView()
         isTerminalInitialized = false
         _binding = null
