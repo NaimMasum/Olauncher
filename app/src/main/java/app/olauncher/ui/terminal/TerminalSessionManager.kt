@@ -140,7 +140,7 @@ alias vi='toybox vi'
 alias nano='toybox vi'
 
 echo "\033[1;32m==========================================\033[0m"
-echo "\033[1;36m Welcome Naim to olunch_term Linux Terminal\033[0m"
+echo "\033[1;36m Welcome Naim to term_lunch Linux Terminal\033[0m"
 echo "\033[1;33m Live PTY Session (isatty=1)\033[0m"
 echo " Standard output IS a real terminal device."
 echo " Interactive TUI (vi, nano, top) & ANSI colors enabled."

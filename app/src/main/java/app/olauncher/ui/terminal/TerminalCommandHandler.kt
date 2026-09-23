@@ -162,7 +162,7 @@ class TerminalCommandHandler(
         val banner = mutableListOf<TerminalLogItem>()
         banner.add(TerminalLogItem("==========================================", TerminalItemType.BANNER))
         banner.add(TerminalLogItem("Welcome Naim", TerminalItemType.SUCCESS))
-        banner.add(TerminalLogItem("olunch_term Linux CLI (Termux Engine)", TerminalItemType.BANNER))
+        banner.add(TerminalLogItem("term_lunch Linux CLI (Termux Engine)", TerminalItemType.BANNER))
         banner.add(TerminalLogItem("Type 'help' for commands, type app name, or run shell tools.", TerminalItemType.OUTPUT))
 
         val batteryLevel = getBatteryPercentage()
@@ -1093,7 +1093,7 @@ class TerminalCommandHandler(
                 conn.connectTimeout = 8000
                 conn.readTimeout = 8000
                 conn.requestMethod = if (headOnly) "HEAD" else "GET"
-                conn.setRequestProperty("User-Agent", "olunch_term/1.0 (Linux; Android CLI)")
+                conn.setRequestProperty("User-Agent", "term_lunch/1.0 (Linux; Android CLI)")
 
                 val code = conn.responseCode
                 val msg = conn.responseMessage
