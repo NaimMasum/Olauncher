@@ -4,14 +4,22 @@
 #>
 
 param(
-    [string]$DeviceIp = "192.168.0.102:5555"
+    [string[]]$CandidateIps = @("192.168.0.100:5555", "192.168.0.102:5555")
 )
 
-Write-Host "Connecting to Wireless ADB at $DeviceIp..." -ForegroundColor Cyan
-adb connect $DeviceIp
+foreach ($ip in $CandidateIps) {
+    Write-Host "Trying Wireless ADB connection at $ip..." -ForegroundColor Cyan
+    adb connect $ip
+}
 
-[Environment]::SetEnvironmentVariable("ANDROID_SERIAL", $DeviceIp, "Process")
-$env:ANDROID_SERIAL = $DeviceIp
+$activeDevice = (adb devices | Select-String "192\.168\.0\.\d+:5555\s+device" | ForEach-Object { ($_ -split "\s+")[0] } | Select-Object -First 1)
 
-Write-Host "`nConnected ADB Devices:" -ForegroundColor Green
+if ($activeDevice) {
+    [Environment]::SetEnvironmentVariable("ANDROID_SERIAL", $activeDevice, "Process")
+    $env:ANDROID_SERIAL = $activeDevice
+    Write-Host "`nActive Wireless Target: $activeDevice" -ForegroundColor Green
+} else {
+    Write-Host "`nNo active device found." -ForegroundColor Yellow
+}
+
 adb devices

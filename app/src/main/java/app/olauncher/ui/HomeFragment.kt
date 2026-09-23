@@ -997,19 +997,9 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             }
         )
 
-        // Top Bar: Clock, Date, Settings, Apps, Mode Toggle
+        // Top Bar: Clock, Date, Mode Toggle
         binding.tcTerminalClock.setOnClickListener { openClockApp() }
         binding.tcTerminalDate.setOnClickListener { openCalendarApp() }
-        binding.btnTerminalSettings.setOnClickListener {
-            try {
-                findNavController().navigate(R.id.action_mainFragment_to_settingsFragment)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-        binding.btnTerminalApps.setOnClickListener {
-            terminalCommandHandler?.execute("apps")
-        }
         binding.btnToggleMode.setOnClickListener {
             prefs.terminalMode = false
             populateHomeScreen(true)
@@ -1105,8 +1095,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         binding.terminalLayout.setBackgroundColor(theme.bgColor)
         binding.tcTerminalClock.setTextColor(theme.accentColor)
         binding.tcTerminalDate.setTextColor(theme.secondaryColor)
-        binding.btnTerminalSettings.setTextColor(theme.accentColor)
-        binding.btnTerminalApps.setTextColor(theme.promptColor)
         binding.btnToggleMode.setTextColor(theme.promptColor)
         binding.tvTerminalPrompt.text = terminalCommandHandler?.getPromptText() ?: "naim@android:$ "
         binding.etTerminalInput.setTextColor(theme.textColor)

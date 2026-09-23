@@ -243,31 +243,6 @@
             android:paddingHorizontal="4dp"
             android:paddingBottom="6dp">
 
-            <TextView
-                android:id="@+id/btnTerminalSettings"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_alignParentStart="true"
-                android:layout_centerVertical="true"
-                android:fontFamily="monospace"
-                android:padding="6dp"
-                android:text="[SETTINGS]"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/btnTerminalApps"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_toEndOf="@id/btnTerminalSettings"
-                android:layout_centerVertical="true"
-                android:layout_marginStart="6dp"
-                android:fontFamily="monospace"
-                android:padding="6dp"
-                android:text="[APPS]"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
             <LinearLayout
                 android:id="@+id/terminalClockWidget"
                 android:layout_width="wrap_content"
