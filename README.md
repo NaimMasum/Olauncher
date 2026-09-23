@@ -20,6 +20,60 @@ AF stands for Ad-Free! :D
 
 - Please check out the **[About](https://tanujnotes.substack.com/p/olauncher-minimal-af-launcher?utm_source=github)** page in the Olauncher settings for a complete list of features and **FAQs**.
 
+---
+
+# 💻 term_lunch | Terminal Minimal Launcher
+
+**term_lunch** is an advanced terminal-enhanced edition of Olauncher, blending ultra-minimalist Android navigation with a real native command-line interface.
+
+## 🚀 Key Features
+
+### 1. Dual Mode Switching (GUI ⇄ CLI)
+- **Minimal GUI**: Clean text-based app launcher with quick swipe gestures.
+- **Native Shell CLI**: Real Linux shell environment (`/system/bin/sh`) built right into your home screen.
+- Toggle between modes seamlessly using header quick buttons (**G** / **C**) or typing `mode gui` / `mode cli`.
+
+### 2. Live In-Terminal Notification Feed
+- **Vibrant Color Badging**: Notifications appear directly in your terminal log with stylized timestamps, warm icons, and distinct brand/neon colors:
+  - 🟢 **WhatsApp** (`#25D366`)
+  - 🔴 **YouTube** (`#FF5252`)
+  - 🔵 **Telegram** (`#29B6F6`)
+  - 🔷 **Messages** (`#00E5FF`)
+  - 🟣 **Discord** (`#7C4DFF`)
+  - 🌸 **Instagram** (`#FF4081`)
+  - ⚡ *...and a dynamic 12-color cyber palette for all other apps!*
+- **Interactive Tap-to-Launch**: Tapping any notification line in the terminal instantly opens the corresponding application.
+- **Commands**:
+  - `notif history` — View recent notification history in full color.
+  - `notif test` — Test terminal notification rendering.
+
+### 3. Detailed Battery & Hardware Metrics
+- Run `battery` to view instant hardware statistics:
+  - Percentage & visual charging indicator
+  - Battery Health (Good, Overheat, Dead, Over Voltage)
+  - Real-time temperature (°C)
+  - Voltage (mV)
+  - Power source (AC, USB, Wireless)
+
+### 4. 24 Diverse Terminal Themes
+- Full theme suite with instant hot-reloading:
+  - Hacker (Matrix Green), Dracula, Monokai, Cyberpunk, Nord, Gruvbox, Synthwave, Tokyo Night, Solarized Dark/Light, One Dark, Retro Amber, Ocean, and more.
+- Accessible via **Settings → Terminal Theme** (scrollable selection dialog) or `theme <name>` command.
+
+### 5. Quick Action Command Suite
+| Command | Description | Example |
+| :--- | :--- | :--- |
+| `call <name/number>` | Place phone call directly | `call Mom` |
+| `whatsapp <name/number>` | Launch WhatsApp chat | `whatsapp Alex` |
+| `apps` | List all installed applications | `apps` |
+| `open <app>` | Launch an application by name | `open Chrome` |
+| `theme <name>` | Switch terminal theme | `theme cyberpunk` |
+| `battery` | Display detailed battery metrics | `battery` |
+| `notif history` | Show notification history feed | `notif history` |
+| `mode <gui\|cli>` | Switch launcher interface mode | `mode gui` |
+| `help` | Display terminal help manual | `help` |
+| `clear` | Clear terminal log output | `clear` |
+
 ##
 
 License: [GNU GPLv3](https://www.gnu.org/licenses/gpl-3.0.en.html)
