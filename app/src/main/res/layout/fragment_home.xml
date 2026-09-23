@@ -56,6 +56,21 @@
             tools:text="Thu, 30 Dec" />
     </LinearLayout>
 
+    <!-- CLI toggle button from GUI mode -->
+    <TextView
+        android:id="@+id/btnGuiToggleCli"
+        style="@style/TextSmall"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="36dp"
+        android:layout_marginEnd="16dp"
+        android:padding="8dp"
+        android:text="C"
+        android:textStyle="bold"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
     <!-- Screen time-->
     <androidx.appcompat.widget.AppCompatTextView
         android:id="@+id/tvScreenTime"
@@ -207,4 +222,129 @@
         android:maxLines="1"
         android:text="@string/set_as_default_launcher_u"
         android:visibility="gone" />
+
+    <!-- Terminal Interface Layout -->
+    <LinearLayout
+        android:id="@+id/terminalLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingTop="36dp"
+        android:paddingBottom="64dp"
+        android:paddingHorizontal="16dp"
+        android:visibility="gone"
+        tools:visibility="visible">
+
+        <!-- Terminal Top Header Bar with Clock Widget, Setting & Hide Buttons -->
+        <RelativeLayout
+            android:id="@+id/terminalTopBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="4dp"
+            android:paddingBottom="6dp">
+
+            <LinearLayout
+                android:id="@+id/terminalClockWidget"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_centerInParent="true"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextClock
+                    android:id="@+id/tcTerminalClock"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:format12Hour="hh:mm a"
+                    android:format24Hour="HH:mm"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <TextClock
+                    android:id="@+id/tcTerminalDate"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:format12Hour="EEE, dd MMM yyyy"
+                    android:format24Hour="EEE, dd MMM yyyy"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/btnToggleMode"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:fontFamily="monospace"
+                android:padding="6dp"
+                android:text="G"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+        </RelativeLayout>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvTerminalLog"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:scrollbars="vertical" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvTerminalSuggestions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginVertical="6dp"
+            android:orientation="horizontal"
+            android:visibility="gone"
+            tools:visibility="visible" />
+
+        <LinearLayout
+            android:id="@+id/terminalInputLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tvTerminalPrompt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:text="user@android:~$ "
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <EditText
+                android:id="@+id/etTerminalInput"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@null"
+                android:fontFamily="monospace"
+                android:imeOptions="actionDone"
+                android:inputType="textNoSuggestions|textVisiblePassword"
+                android:maxLines="1"
+                android:paddingHorizontal="4dp"
+                android:paddingVertical="8dp"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/btnToggleKeyboard"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:padding="6dp"
+                android:text="[KB]"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <include
+            android:id="@+id/includedKeyboard"
+            layout="@layout/layout_terminal_keyboard" />
+    </LinearLayout>
 </FrameLayout>

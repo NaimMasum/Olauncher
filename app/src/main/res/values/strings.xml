@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name" translatable="false">Olauncher</string>
+    <string name="app_name" translatable="false">term_lunch</string>
     <string name="github" translatable="false">Github</string>
     <string name="lock_layout_description" translatable="false">lock layout description to be used a unique id to lock screen</string>
     <!-- Home button for recents feature disabled -->
@@ -173,4 +173,11 @@
     <string name="invalid_shortcut">Invalid shortcut</string>
     <string name="shortcut_not_found">Shortcut not found</string>
     <string name="unable_to_open_shortcut">Unable to open shortcut</string>
+
+    <string name="launcher_mode">Launcher mode</string>
+    <string name="mode_terminal">Terminal (CLI)</string>
+    <string name="mode_classic">Classic Minimalist</string>
+    <string name="terminal_theme">Terminal theme</string>
+    <string name="terminal_interface">Terminal Interface</string>
+    <string name="suggestion_bar_apps">Suggestion bar apps</string>
 </resources>
