@@ -358,11 +358,7 @@ class TerminalCommandHandler(
             "termux" -> handleTermuxCommand(args, resolvedInput)
             "call", "dial" -> {
                 val number = args.joinToString(" ").trim()
-                if (number.isBlank()) {
-                    callbacks.onAddLog(TerminalLogItem("Usage: call <number> (e.g. call 1234567890)", TerminalItemType.ERROR))
-                } else {
-                    handleCall(number)
-                }
+                handleCall(number)
             }
             "whatsapp", "wa" -> {
                 handleWhatsApp(args)
@@ -608,8 +604,22 @@ class TerminalCommandHandler(
     }
 
     private fun handleCall(rawTarget: String) {
-        val cleaned = rawTarget.replace("[^0-9+*#]".toRegex(), "")
-        val target = if (cleaned.isNotEmpty()) cleaned else rawTarget
+        val trimmed = rawTarget.trim()
+        if (trimmed.isEmpty()) {
+            try {
+                val intent = Intent(Intent.ACTION_DIAL).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+                callbacks.onAddLog(TerminalLogItem("Opening phone dialer...", TerminalItemType.SUCCESS))
+            } catch (e: Exception) {
+                callbacks.onAddLog(TerminalLogItem("Failed to open dialer: ${e.message}", TerminalItemType.ERROR))
+            }
+            return
+        }
+
+        val cleaned = trimmed.replace("[^0-9+*#,;]".toRegex(), "")
+        val target = if (cleaned.isNotEmpty()) cleaned else trimmed
         try {
             val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${Uri.encode(target)}")).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -647,22 +657,44 @@ class TerminalCommandHandler(
         val rest = if (args.size > 1) args.subList(1, args.size) else emptyList()
 
         val isCall = subCmd == "call"
-        val targetRaw = if (isCall) rest.joinToString(" ") else args.joinToString(" ")
-        val cleanedNumber = targetRaw.replace("[^0-9+]".toRegex(), "")
+        val isMsg = subCmd == "msg" || subCmd == "message" || subCmd == "text"
 
-        if (cleanedNumber.isNotBlank()) {
+        val targetAndMsg = if (isCall || isMsg) rest else args
+        if (targetAndMsg.isEmpty()) {
+            val matched = findApp("whatsapp")
+            if (matched != null) callbacks.onLaunchApp(matched)
+            return
+        }
+
+        val firstToken = targetAndMsg[0]
+        val messageText = if (targetAndMsg.size > 1) targetAndMsg.subList(1, targetAndMsg.size).joinToString(" ") else ""
+
+        val cleanedNumber = firstToken.replace("[^0-9+]".toRegex(), "")
+
+        if (cleanedNumber.length >= 7) {
             val formatted = cleanedNumber.removePrefix("+")
             try {
-                val uri = Uri.parse("https://api.whatsapp.com/send?phone=$formatted")
+                val url = if (messageText.isNotBlank()) {
+                    "https://api.whatsapp.com/send?phone=$formatted&text=${Uri.encode(messageText)}"
+                } else {
+                    "https://api.whatsapp.com/send?phone=$formatted"
+                }
+                val uri = Uri.parse(url)
                 val intent = Intent(Intent.ACTION_VIEW, uri).apply {
                     setPackage("com.whatsapp")
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
                 context.startActivity(intent)
-                callbacks.onAddLog(TerminalLogItem("Opening WhatsApp for $cleanedNumber...", TerminalItemType.SUCCESS))
+                val actionType = if (isCall) "calling" else if (messageText.isNotBlank()) "messaging" else "chat"
+                callbacks.onAddLog(TerminalLogItem("Opening WhatsApp ($actionType) for $cleanedNumber...", TerminalItemType.SUCCESS))
             } catch (e: Exception) {
                 try {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$formatted")).apply {
+                    val waUrl = if (messageText.isNotBlank()) {
+                        "https://wa.me/$formatted?text=${Uri.encode(messageText)}"
+                    } else {
+                        "https://wa.me/$formatted"
+                    }
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(waUrl)).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     }
                     context.startActivity(intent)
@@ -672,13 +704,35 @@ class TerminalCommandHandler(
                 }
             }
         } else {
+            // Target is a name or query (e.g. whatsapp john or whatsapp call john)
+            val fullTargetQuery = targetAndMsg.joinToString(" ")
             try {
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    setPackage("com.whatsapp")
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                // If text is provided, use ACTION_SEND to WhatsApp
+                if (messageText.isNotBlank() || isMsg) {
+                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, fullTargetQuery)
+                        setPackage("com.whatsapp")
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(sendIntent)
+                    callbacks.onAddLog(TerminalLogItem("Opening WhatsApp to share: '$fullTargetQuery'...", TerminalItemType.SUCCESS))
+                } else {
+                    // Try launching WhatsApp or opening search
+                    val matched = findApp("whatsapp")
+                    if (matched != null) {
+                        callbacks.onLaunchApp(matched)
+                    } else {
+                        val launchIntent = context.packageManager.getLaunchIntentForPackage("com.whatsapp")
+                        if (launchIntent != null) {
+                            context.startActivity(launchIntent)
+                        } else {
+                            callbacks.onAddLog(TerminalLogItem("WhatsApp is not installed.", TerminalItemType.ERROR))
+                            return
+                        }
+                    }
+                    callbacks.onAddLog(TerminalLogItem("Opened WhatsApp. Search: '$fullTargetQuery'", TerminalItemType.SUCCESS))
                 }
-                context.startActivity(intent)
-                callbacks.onAddLog(TerminalLogItem("Opening WhatsApp for $targetRaw...", TerminalItemType.SUCCESS))
             } catch (e: Exception) {
                 callbacks.onAddLog(TerminalLogItem("Failed to open WhatsApp: ${e.message}", TerminalItemType.ERROR))
             }
@@ -1146,9 +1200,10 @@ class TerminalCommandHandler(
             "  clear, cls      : Clear terminal screen",
             "",
             "Actions & Shortcuts:",
-            "  call <number>   : Dial phone number directly (e.g. 'call 1234567890')",
-            "  whatsapp <num>  : Open WhatsApp chat/call (e.g. 'whatsapp call +123456')",
-            "  chrome <url>    : Open URL in Chrome (e.g. 'chrome open facebook.com')",
+            "  call [number]   : Open dialer or dial number directly (e.g. 'call', 'call 1234567890')",
+            "  whatsapp <num>  : Open WhatsApp chat/call with number (e.g. 'wa call +123456')",
+            "  whatsapp msg <num> <text> : Send message directly via WhatsApp",
+            "  chrome [url]    : Open URL in Chrome (e.g. 'chrome open facebook.com')",
             "",
             "SSH Client to Termux (Interactive Linux Session):",
             "  ssh             : Display SSH client status & menu",
@@ -1619,6 +1674,33 @@ class TerminalCommandHandler(
                     list.add(TerminalSuggestion("theme $t", "theme $t", executeImmediately = true))
                 }
             }
+            return list
+        }
+
+        if (q.startsWith("whatsapp") || q.startsWith("wa ")) {
+            val isWa = q.startsWith("wa ")
+            val sub = if (isWa) q.removePrefix("wa ").trim() else q.removePrefix("whatsapp").trim()
+            val waPrefix = if (isWa) "wa" else "whatsapp"
+            val waSubCommands = listOf(
+                "call ", "message ", "msg "
+            )
+            for (sc in waSubCommands) {
+                if (sub.isEmpty() || sc.startsWith(sub)) {
+                    list.add(
+                        TerminalSuggestion(
+                            displayText = "$waPrefix $sc",
+                            commandToFill = "$waPrefix $sc",
+                            executeImmediately = false
+                        )
+                    )
+                }
+            }
+            // Also suggest contacts or pinned if available
+            return list
+        }
+
+        if (q.startsWith("call ") || q.startsWith("dial ")) {
+            // Suggest phone dialer or popular numbers
             return list
         }
 
