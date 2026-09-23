@@ -385,6 +385,16 @@ class TerminalCommandHandler(
                     return
                 }
 
+                // Check for interactive Fullscreen TUI commands (nano, vi, htop, etc.)
+                if (isInteractiveTuiCommand(command)) {
+                    if (sshTerminalManager.isConnected) {
+                        sshTerminalManager.sendCommand(resolvedInput)
+                    } else {
+                        handleInteractiveCommandNotice(command, resolvedInput)
+                    }
+                    return
+                }
+
                 // Run via Termux IPC if Termux mode is enabled or if command is Termux-specific (like pkg, apt)
                 if ((prefs.terminalTermuxMode || isTermuxSpecificCommand(command)) && termuxBridge.isTermuxInstalled()) {
                     executeTermuxCommand(resolvedInput)
@@ -394,6 +404,32 @@ class TerminalCommandHandler(
                 }
             }
         }
+    }
+
+    private fun isInteractiveTuiCommand(cmd: String): Boolean {
+        val interactive = setOf(
+            "nano", "vi", "vim", "nvim", "emacs", "htop", "top", "less", "more", "tmux", "screen"
+        )
+        return interactive.contains(cmd)
+    }
+
+    private fun handleInteractiveCommandNotice(cmd: String, fullInput: String) {
+        callbacks.onAddLog(
+            TerminalLogItem(
+                "'$cmd' is an interactive visual editor/TUI program.\n" +
+                "In pseudo-terminal mode, standard output is a piped line stream, not a terminal PTY device (tcgetattr/isatty=0).\n\n" +
+                "Solution 1 (Full Interactive SSH in Olauncher):\n" +
+                "  Connect to Termux OpenSSH server with a live PTY:\n" +
+                "    ssh connect\n" +
+                "  Then run '$fullInput' seamlessly!\n\n" +
+                "Solution 2 (Open in Termux app):\n" +
+                "  Launch Termux directly: 'termux open'\n\n" +
+                "Tip (Quick text editing without TUI):\n" +
+                "  echo \"text\" >> file.txt\n" +
+                "  cat file.txt",
+                TerminalItemType.ERROR
+            )
+        )
     }
 
     private fun isTermuxSpecificCommand(cmd: String): Boolean {
