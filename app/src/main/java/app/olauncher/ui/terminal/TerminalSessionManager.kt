@@ -18,6 +18,8 @@ import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
 import java.io.File
 
+import app.olauncher.helper.showKeyboard
+
 class TerminalSessionManager(
     private val context: Context,
     private val prefs: Prefs,
@@ -82,6 +84,9 @@ class TerminalSessionManager(
         override fun onSingleTapUp(e: MotionEvent) {
             // Keep focus on terminal
             terminalView?.requestFocus()
+            if (!prefs.terminalKeyboardVisible) {
+                terminalView?.showKeyboard()
+            }
         }
 
         override fun shouldBackButtonBeMappedToEscape(): Boolean = false
@@ -122,58 +127,140 @@ class TerminalSessionManager(
     private fun setupShellEnvironment() {
         try {
             if (!homeDir.exists()) homeDir.mkdirs()
-            if (!binDir.exists()) binDir.mkdirs()
+            // Clean up old binDir if exists to eliminate permission denied binaries
+            if (binDir.exists()) {
+                binDir.deleteRecursively()
+            }
 
             // Setup profile script sourced by mksh via ENV
             val profile = File(homeDir, ".profile")
             val profileContent = """
-export PATH="${binDir.absolutePath}:/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin"
+export PATH="/system/bin:/system/xbin"
 export HOME="${homeDir.absolutePath}"
 export TERM="xterm-256color"
 export COLORTERM="truecolor"
 export SHELL="/system/bin/sh"
-export PS1='naim@android:\w\$ '
-alias ls='toybox ls -F --color=auto'
-alias ll='toybox ls -laF --color=auto'
+export PS1='naim@android:${'$'} '
+
+# System & Launcher Functions
+apps() {
+    if [ -f "${'$'}HOME/.apps_list" ]; then
+        toybox cat "${'$'}HOME/.apps_list"
+    else
+        echo "Installed applications list is updating..."
+    fi
+}
+
+battery() {
+    dumpsys battery
+}
+
+call() {
+    if [ -z "${'$'}1" ]; then
+        am start -a android.intent.action.DIAL >/dev/null 2>&1
+    else
+        am start -a android.intent.action.DIAL -d "tel:${'$'}1" >/dev/null 2>&1
+    fi
+}
+
+wa() {
+    if [ -z "${'$'}1" ]; then
+        am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p com.whatsapp >/dev/null 2>&1
+    else
+        am start -a android.intent.action.VIEW -d "https://api.whatsapp.com/send?phone=${'$'}1" >/dev/null 2>&1
+    fi
+}
+
+whatsapp() {
+    wa "${'$'}@"
+}
+
+settings() {
+    am start -a android.settings.SETTINGS >/dev/null 2>&1
+    echo "Opening Settings..."
+}
+
+termux() {
+    am start -n com.termux/.app.TermuxActivity >/dev/null 2>&1
+    echo "Opening Termux application..."
+}
+
+notif() {
+    echo "── Active Notifications ──"
+    dumpsys notification --noredact | grep -E 'extras=\{android.title|android.text' | head -n 30
+}
+
+pkg() {
+    if [ -z "${'$'}1" ]; then
+        echo "Termux package manager bridge"
+        echo "Usage: pkg install <package> | pkg update | pkg list-all"
+        echo "Opening Termux app..."
+        am start -n com.termux/.app.TermuxActivity >/dev/null 2>&1
+        return
+    fi
+    echo "Forwarding to Termux: pkg ${'$'}*"
+    am broadcast -a com.termux.RUN_COMMAND -n com.termux/.app.RunCommandReceiver \
+        --es com.termux.RUN_COMMAND_PATH "/data/data/com.termux/files/usr/bin/pkg" \
+        --esa com.termux.RUN_COMMAND_ARGUMENTS "${'$'}*" \
+        --ez com.termux.RUN_COMMAND_BACKGROUND "true" >/dev/null 2>&1
+    echo "Dispatched to Termux background service. Switch to [CLI] top bar mode for full command outputs."
+}
+
+apt() {
+    pkg "${'$'}@"
+}
+
+help() {
+    echo "\033[1;36m── Available term_lunch Commands ──\033[0m"
+    echo "  \033[1;32mapps\033[0m           : List all installed apps & shortcuts"
+    echo "  \033[1;32m<appname>\033[0m      : Launch app directly (e.g. chrome, whatsapp, phone)"
+    echo "  \033[1;32mbattery\033[0m        : Show detailed battery status"
+    echo "  \033[1;32mcall <number>\033[0m  : Place phone call"
+    echo "  \033[1;32mwa <number>\033[0m    : Open WhatsApp chat"
+    echo "  \033[1;32mnotif\033[0m          : View active notification drawer"
+    echo "  \033[1;32msettings\033[0m       : Open system settings"
+    echo "  \033[1;32mtermux\033[0m         : Open Termux application"
+    echo "  \033[1;32mpkg / apt\033[0m      : Termux package manager bridge"
+    echo "  \033[1;32mvi / nano\033[0m      : Fullscreen text editor"
+    echo "  \033[1;32mls / dir\033[0m       : List files in current directory"
+    echo "  \033[1;32mtop / ps\033[0m       : View system processes in real-time"
+    echo "  \033[1;32mclear\033[0m          : Clear terminal screen"
+    echo "  \033[1;33m[TERMUX]/[CLI]\033[0m : Toggle at top bar to switch to Assistant CLI"
+}
+
+# Standard Unix Aliases
+alias ls='toybox ls -F'
+alias ll='toybox ls -laF'
+alias dir='toybox ls -laF'
 alias clear='toybox clear'
+alias cls='toybox clear'
 alias vi='toybox vi'
 alias nano='toybox vi'
+alias top='toybox top'
+alias ps='toybox ps'
+alias df='toybox df -h'
+alias free='toybox free -m'
+alias uptime='toybox uptime'
+alias uname='toybox uname -a'
+alias whoami='toybox whoami'
+alias id='toybox id'
+alias cat='toybox cat'
+alias grep='toybox grep'
+alias find='toybox find'
+
+# Load app launch aliases
+if [ -f "${'$'}HOME/.app_aliases" ]; then
+    . "${'$'}HOME/.app_aliases"
+fi
 
 echo "\033[1;32m==========================================\033[0m"
 echo "\033[1;36m Welcome Naim to term_lunch Linux Terminal\033[0m"
 echo "\033[1;33m Live PTY Session (isatty=1)\033[0m"
-echo " Standard output IS a real terminal device."
-echo " Interactive TUI (vi, nano, top) & ANSI colors enabled."
-echo " Type an app name (e.g. 'chrome') or 'apps' to launch."
+echo " Standard Unix environment & tools ready."
+echo " Type 'help' for commands, 'apps' for app list."
 echo "\033[1;32m==========================================\033[0m"
 """.trimIndent()
             profile.writeText(profileContent)
-
-            // Setup common utility scripts in bin
-            setupBinCommands()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun setupBinCommands() {
-        try {
-            // Helper: settings
-            val settingsScript = File(binDir, "settings")
-            settingsScript.writeText("#!/system/bin/sh\nam start -a android.settings.SETTINGS >/dev/null 2>&1\necho 'Opening settings...'\n")
-            settingsScript.setExecutable(true, false)
-
-            // Helper: vi
-            val viScript = File(binDir, "vi")
-            viScript.writeText("#!/system/bin/sh\nexec toybox vi \"$@\"\n")
-            viScript.setExecutable(true, false)
-
-            // Helper: nano (aliased to toybox vi on Android)
-            val nanoScript = File(binDir, "nano")
-            nanoScript.writeText("#!/system/bin/sh\nexec toybox vi \"$@\"\n")
-            nanoScript.setExecutable(true, false)
-
-            // Helper: apps list
             updateAppsListScript(callbacks.getInstalledApps())
         } catch (e: Exception) {
             e.printStackTrace()
@@ -183,27 +270,33 @@ echo "\033[1;32m==========================================\033[0m"
     fun updateAppsListScript(apps: List<AppModel.App>) {
         try {
             if (apps.isEmpty()) return
-            if (!binDir.exists()) binDir.mkdirs()
+            if (!homeDir.exists()) homeDir.mkdirs()
 
-            // 1. apps command
-            val appsScript = File(binDir, "apps")
-            val lines = StringBuilder("#!/system/bin/sh\necho 'Installed Applications (${apps.size}):'\n")
+            // 1. Generate .apps_list text file
+            val appsListFile = File(homeDir, ".apps_list")
+            val listBuilder = StringBuilder("── Installed Applications (${apps.size}) ──\n")
+            val aliasesBuilder = StringBuilder("# Auto-generated application aliases\n")
+
+            val reserved = setOf(
+                "sh", "su", "ls", "ll", "dir", "cd", "rm", "mv", "cp", "echo", "cat", "ps", "top",
+                "vi", "nano", "apps", "settings", "help", "clear", "cls", "open", "battery",
+                "call", "wa", "whatsapp", "notif", "termux", "pkg", "apt", "df", "free",
+                "uptime", "uname", "whoami", "id", "grep", "find"
+            )
+
             for (app in apps.sortedBy { it.appLabel.lowercase() }) {
-                lines.append("echo '  > ${app.appLabel.replace("'", "\\'")}'\n")
-            }
-            appsScript.writeText(lines.toString())
-            appsScript.setExecutable(true, false)
-
-            // 2. Individual app launcher scripts
-            for (app in apps) {
                 val safeName = app.appLabel.lowercase()
                     .trim()
                     .replace("\\s+".toRegex(), "_")
                     .replace("[^a-z0-9_-]".toRegex(), "")
 
-                val reserved = setOf("sh", "su", "ls", "cd", "rm", "mv", "cp", "echo", "cat", "ps", "top", "vi", "nano", "apps", "settings", "help", "clear", "open")
+                listBuilder.append("  > ${app.appLabel}")
                 if (safeName.isNotEmpty() && !reserved.contains(safeName)) {
-                    val appScript = File(binDir, safeName)
+                    listBuilder.append(" (command: $safeName)")
+                }
+                listBuilder.append("\n")
+
+                if (safeName.isNotEmpty() && !reserved.contains(safeName)) {
                     val launchIntent = context.packageManager.getLaunchIntentForPackage(app.appPackage)
                     val comp = launchIntent?.component?.flattenToShortString()
                     val cmd = if (comp != null) {
@@ -211,9 +304,20 @@ echo "\033[1;32m==========================================\033[0m"
                     } else {
                         "am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p \"${app.appPackage}\" >/dev/null 2>&1"
                     }
-                    appScript.writeText("#!/system/bin/sh\n$cmd\necho \"Launched ${app.appLabel}\"\n")
-                    appScript.setExecutable(true, false)
+                    val labelSafe = app.appLabel.replace("'", "\\'")
+                    aliasesBuilder.append("alias $safeName='$cmd && echo \"Launched $labelSafe\"'\n")
                 }
+            }
+
+            appsListFile.writeText(listBuilder.toString())
+
+            // 2. Generate .app_aliases shell file
+            val aliasesFile = File(homeDir, ".app_aliases")
+            aliasesFile.writeText(aliasesBuilder.toString())
+
+            // If session is already running, dynamically source the new aliases
+            currentSession?.let {
+                write(". \"\$HOME/.app_aliases\" >/dev/null 2>&1\n")
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -223,7 +327,7 @@ echo "\033[1;32m==========================================\033[0m"
     fun attachToView(view: TerminalView) {
         this.terminalView = view
         view.setTerminalViewClient(viewClient)
-        view.setTextSize(13)
+        view.setTextSize(16)
         view.setTypeface(Typeface.MONOSPACE)
         view.setTerminalCursorBlinkerRate(600)
         view.setTerminalCursorBlinkerState(true, true)
@@ -244,7 +348,7 @@ echo "\033[1;32m==========================================\033[0m"
 
             val env = arrayOf(
                 "HOME=${homeDir.absolutePath}",
-                "PATH=${binDir.absolutePath}:/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin",
+                "PATH=/system/bin:/system/xbin",
                 "TERM=xterm-256color",
                 "COLORTERM=truecolor",
                 "SHELL=/system/bin/sh",
@@ -320,6 +424,14 @@ echo "\033[1;32m==========================================\033[0m"
 
     fun sendCtrlC() {
         currentSession?.write(byteArrayOf(0x03), 0, 1) // SIGINT (^C)
+    }
+
+    fun sendCtrlKey(char: Char) {
+        val lower = char.lowercaseChar()
+        if (lower in 'a'..'z') {
+            val ctrlByte = (lower.code - 'a'.code + 1).toByte()
+            currentSession?.write(byteArrayOf(ctrlByte), 0, 1)
+        }
     }
 
     fun sendUp() {
