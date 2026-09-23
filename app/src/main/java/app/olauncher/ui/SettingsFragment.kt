@@ -115,9 +115,9 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
     override fun onClick(view: View) {
         when (view.id) {
             R.id.tvLauncherMode -> toggleLauncherMode()
-            R.id.tvTerminalTheme -> showTerminalThemeMenu(view)
-            R.id.tvTerminalPinnedApps -> showManagePinnedAppsDialog()
-            R.id.tvTerminalNotifications -> toggleTerminalNotifications()
+            R.id.tvTerminalTheme, R.id.flTerminalTheme -> showTerminalThemeMenu(view)
+            R.id.tvTerminalPinnedApps, R.id.flTerminalPinnedApps -> showManagePinnedAppsDialog()
+            R.id.tvTerminalNotifications, R.id.flTerminalNotifications -> toggleTerminalNotifications()
             R.id.tvTerminalNotificationApps -> showNotificationAppsDialog()
             R.id.olauncherHiddenApps -> showHiddenApps()
             R.id.moreFeatures -> viewModel.showDialog.postValue(Constants.Dialog.PRO_MESSAGE)
@@ -204,8 +204,11 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         binding.boldFont.setOnClickListener(this)
         binding.tvLauncherMode?.setOnClickListener(this)
         binding.tvTerminalTheme?.setOnClickListener(this)
+        binding.flTerminalTheme?.setOnClickListener(this)
         binding.tvTerminalPinnedApps?.setOnClickListener(this)
+        binding.flTerminalPinnedApps?.setOnClickListener(this)
         binding.tvTerminalNotifications?.setOnClickListener(this)
+        binding.flTerminalNotifications?.setOnClickListener(this)
         binding.tvTerminalNotificationApps?.setOnClickListener(this)
 
         binding.share.setOnClickListener(this)
@@ -602,20 +605,23 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
     }
 
     private fun showTerminalThemeMenu(anchor: View) {
-        anchor.showPopupMenu(
-            configure = { menu ->
-                TerminalTheme.ALL_THEMES.forEachIndexed { index, theme ->
-                    menu.add(Menu.NONE, index, index, theme.displayName)
+        val themes = TerminalTheme.ALL_THEMES
+        val themeNames = themes.map { it.displayName }.toTypedArray()
+        val currentIndex = themes.indexOfFirst { it.id == prefs.terminalTheme }.coerceAtLeast(0)
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.terminal_theme)
+            .setSingleChoiceItems(themeNames, currentIndex) { dialog, which ->
+                val selected = themes.getOrNull(which)
+                if (selected != null) {
+                    prefs.terminalTheme = selected.id
+                    populateTerminalTheme()
+                    viewModel.refreshHome.postValue(true)
                 }
+                dialog.dismiss()
             }
-        ) { item ->
-            val selected = TerminalTheme.ALL_THEMES.getOrNull(item.itemId)
-            if (selected != null) {
-                prefs.terminalTheme = selected.id
-                populateTerminalTheme()
-                viewModel.refreshHome.postValue(true)
-            }
-        }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun showHiddenApps() {
