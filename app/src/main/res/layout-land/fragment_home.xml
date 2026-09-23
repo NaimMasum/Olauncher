@@ -67,7 +67,7 @@
         android:layout_marginTop="36dp"
         android:layout_marginEnd="16dp"
         android:padding="8dp"
-        android:text="[CLI]"
+        android:text="C"
         android:textStyle="bold"
         android:visibility="gone"
         tools:visibility="visible" />
@@ -277,8 +277,8 @@
                 android:layout_centerVertical="true"
                 android:fontFamily="monospace"
                 android:padding="6dp"
-                android:text="[GUI]"
-                android:textSize="12sp"
+                android:text="G"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
         </RelativeLayout>
