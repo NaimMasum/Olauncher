@@ -1111,6 +1111,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             }
             isReceiverRegistered = false
         }
+        terminalCommandHandler?.destroy()
         super.onDestroyView()
         isTerminalInitialized = false
         _binding = null

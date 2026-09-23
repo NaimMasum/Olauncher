@@ -52,6 +52,10 @@ class Prefs(context: Context) {
     private val TERMINAL_KEYBOARD_VISIBLE = "TERMINAL_KEYBOARD_VISIBLE"
     private val TERMINAL_PINNED_APPS = "TERMINAL_PINNED_APPS"
     private val TERMINAL_TERMUX_MODE = "TERMINAL_TERMUX_MODE"
+    private val TERMINAL_SSH_HOST = "TERMINAL_SSH_HOST"
+    private val TERMINAL_SSH_PORT = "TERMINAL_SSH_PORT"
+    private val TERMINAL_SSH_USER = "TERMINAL_SSH_USER"
+    private val TERMINAL_SSH_PASS = "TERMINAL_SSH_PASS"
 
     private val APP_NAME_1 = "APP_NAME_1"
     private val APP_NAME_2 = "APP_NAME_2"
@@ -680,4 +684,20 @@ class Prefs(context: Context) {
     var terminalTermuxMode: Boolean
         get() = prefs.getBoolean(TERMINAL_TERMUX_MODE, false)
         set(value) = prefs.edit { putBoolean(TERMINAL_TERMUX_MODE, value) }
+
+    var terminalSshHost: String
+        get() = prefs.getString(TERMINAL_SSH_HOST, "127.0.0.1") ?: "127.0.0.1"
+        set(value) = prefs.edit { putString(TERMINAL_SSH_HOST, value) }
+
+    var terminalSshPort: Int
+        get() = prefs.getInt(TERMINAL_SSH_PORT, 8022)
+        set(value) = prefs.edit { putInt(TERMINAL_SSH_PORT, value) }
+
+    var terminalSshUser: String
+        get() = prefs.getString(TERMINAL_SSH_USER, "") ?: ""
+        set(value) = prefs.edit { putString(TERMINAL_SSH_USER, value) }
+
+    var terminalSshPass: String
+        get() = prefs.getString(TERMINAL_SSH_PASS, "") ?: ""
+        set(value) = prefs.edit { putString(TERMINAL_SSH_PASS, value) }
 }

@@ -23,6 +23,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Uri
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -35,6 +36,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
+import app.olauncher.ui.terminal.ssh.SshTerminalManager
 
 class TerminalCommandHandler(
     private val context: Context,
@@ -66,6 +68,34 @@ class TerminalCommandHandler(
     private var currentProcess: Process? = null
     private val termuxBridge = TermuxBridge(context)
 
+    val sshTerminalManager: SshTerminalManager by lazy {
+        SshTerminalManager(
+            prefs = prefs,
+            callbacks = object : SshTerminalManager.Callbacks {
+                override fun onOutput(line: String, type: TerminalItemType) {
+                    callbacks.onAddLog(TerminalLogItem(line, type))
+                }
+
+                override fun onConnected() {
+                    callbacks.onRunningStateChanged(false)
+                }
+
+                override fun onDisconnected() {
+                    callbacks.onRunningStateChanged(false)
+                }
+
+                override fun onError(message: String) {
+                    callbacks.onAddLog(TerminalLogItem(message, TerminalItemType.ERROR))
+                    callbacks.onRunningStateChanged(false)
+                }
+
+                override fun onStatusChanged(statusText: String) {
+                    // Update prompt if needed
+                }
+            }
+        )
+    }
+
     private fun getDefaultDirectory(): File {
         val home = File(context.filesDir, "home")
         if (!home.exists()) {
@@ -93,9 +123,10 @@ class TerminalCommandHandler(
         val theme = TerminalTheme.fromId(prefs.terminalTheme)
         val ssb = SpannableStringBuilder()
 
-        val userPart = "naim@android:"
-        val pathPart = getDisplayPath()
-        val symbolPart = "$ "
+        val isSsh = sshTerminalManager.isConnected
+        val userPart = if (isSsh) "ssh:termux@" else "naim@android:"
+        val pathPart = if (isSsh) "~" else getDisplayPath()
+        val symbolPart = if (isSsh) "# " else "$ "
 
         val startUser = ssb.length
         ssb.append(userPart)
@@ -171,7 +202,10 @@ class TerminalCommandHandler(
     }
 
     fun sendCtrlC() {
-        if (currentProcess != null) {
+        if (sshTerminalManager.isConnected) {
+            sshTerminalManager.sendCtrlC()
+            callbacks.onAddLog(TerminalLogItem("^C", TerminalItemType.OUTPUT))
+        } else if (currentProcess != null) {
             try {
                 currentProcess?.destroyForcibly()
                 callbacks.onAddLog(TerminalLogItem("^C", TerminalItemType.ERROR))
@@ -183,6 +217,14 @@ class TerminalCommandHandler(
         } else {
             callbacks.onAddLog(TerminalLogItem("^C", TerminalItemType.OUTPUT))
         }
+    }
+
+    fun destroy() {
+        if (sshTerminalManager.isConnected) {
+            sshTerminalManager.disconnect()
+        }
+        currentProcess?.destroyForcibly()
+        currentProcess = null
     }
 
     fun execute(rawInput: String) {
@@ -207,6 +249,37 @@ class TerminalCommandHandler(
 
         val command = tokens[0].lowercase()
         val args = if (tokens.size > 1) tokens.subList(1, tokens.size) else emptyList()
+
+        // If SSH session is active, prioritize SSH routing unless user issues local launcher command
+        if (sshTerminalManager.isConnected) {
+            when (command) {
+                "exit", "logout" -> {
+                    sshTerminalManager.disconnect()
+                    return
+                }
+                "ssh" -> {
+                    handleSshCommand(args)
+                    return
+                }
+                "clear", "cls" -> {
+                    callbacks.onClearLogs()
+                    return
+                }
+                "settings" -> {
+                    callbacks.onOpenSettings()
+                    return
+                }
+                "mode" -> {
+                    callbacks.onSwitchLauncherMode(false)
+                    return
+                }
+                else -> {
+                    // Send command directly over live SSH session to Termux!
+                    sshTerminalManager.sendCommand(resolvedInput)
+                    return
+                }
+            }
+        }
 
         when (command) {
             "help", "?" -> showHelp()
@@ -283,6 +356,23 @@ class TerminalCommandHandler(
             "net", "internet", "ip" -> handleNetStatus()
             "curl", "fetch" -> handleCurl(args)
             "termux" -> handleTermuxCommand(args, resolvedInput)
+            "call", "dial" -> {
+                val number = args.joinToString(" ").trim()
+                if (number.isBlank()) {
+                    callbacks.onAddLog(TerminalLogItem("Usage: call <number> (e.g. call 1234567890)", TerminalItemType.ERROR))
+                } else {
+                    handleCall(number)
+                }
+            }
+            "whatsapp", "wa" -> {
+                handleWhatsApp(args)
+            }
+            "chrome" -> {
+                handleChrome(args)
+            }
+            "ssh" -> {
+                handleSshCommand(args)
+            }
             else -> {
                 // If it starts with ! (e.g. !g query), treat as duckduckgo or web search
                 if (rawInput.startsWith("!")) {
@@ -513,6 +603,214 @@ class TerminalCommandHandler(
             }
             else -> {
                 callbacks.onAddLog(TerminalLogItem("Usage: termux repo [status|fix|cf|grimler]", TerminalItemType.ERROR))
+            }
+        }
+    }
+
+    private fun handleCall(rawTarget: String) {
+        val cleaned = rawTarget.replace("[^0-9+*#]".toRegex(), "")
+        val target = if (cleaned.isNotEmpty()) cleaned else rawTarget
+        try {
+            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${Uri.encode(target)}")).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+            callbacks.onAddLog(TerminalLogItem("Dialing $target...", TerminalItemType.SUCCESS))
+        } catch (e: Exception) {
+            callbacks.onAddLog(TerminalLogItem("Failed to open dialer: ${e.message}", TerminalItemType.ERROR))
+        }
+    }
+
+    private fun handleWhatsApp(args: List<String>) {
+        if (args.isEmpty()) {
+            val matched = findApp("whatsapp")
+            if (matched != null) {
+                callbacks.onAddLog(TerminalLogItem("Opening WhatsApp...", TerminalItemType.SUCCESS))
+                callbacks.onLaunchApp(matched)
+            } else {
+                try {
+                    val intent = context.packageManager.getLaunchIntentForPackage("com.whatsapp")
+                    if (intent != null) {
+                        context.startActivity(intent)
+                        callbacks.onAddLog(TerminalLogItem("Opening WhatsApp...", TerminalItemType.SUCCESS))
+                    } else {
+                        callbacks.onAddLog(TerminalLogItem("WhatsApp is not installed.", TerminalItemType.ERROR))
+                    }
+                } catch (e: Exception) {
+                    callbacks.onAddLog(TerminalLogItem("Error: ${e.message}", TerminalItemType.ERROR))
+                }
+            }
+            return
+        }
+
+        val subCmd = args[0].lowercase()
+        val rest = if (args.size > 1) args.subList(1, args.size) else emptyList()
+
+        val isCall = subCmd == "call"
+        val targetRaw = if (isCall) rest.joinToString(" ") else args.joinToString(" ")
+        val cleanedNumber = targetRaw.replace("[^0-9+]".toRegex(), "")
+
+        if (cleanedNumber.isNotBlank()) {
+            val formatted = cleanedNumber.removePrefix("+")
+            try {
+                val uri = Uri.parse("https://api.whatsapp.com/send?phone=$formatted")
+                val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                    setPackage("com.whatsapp")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+                callbacks.onAddLog(TerminalLogItem("Opening WhatsApp for $cleanedNumber...", TerminalItemType.SUCCESS))
+            } catch (e: Exception) {
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$formatted")).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(intent)
+                    callbacks.onAddLog(TerminalLogItem("Opening WhatsApp for $cleanedNumber...", TerminalItemType.SUCCESS))
+                } catch (e2: Exception) {
+                    callbacks.onAddLog(TerminalLogItem("Failed to open WhatsApp: ${e2.message}", TerminalItemType.ERROR))
+                }
+            }
+        } else {
+            try {
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setPackage("com.whatsapp")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+                callbacks.onAddLog(TerminalLogItem("Opening WhatsApp for $targetRaw...", TerminalItemType.SUCCESS))
+            } catch (e: Exception) {
+                callbacks.onAddLog(TerminalLogItem("Failed to open WhatsApp: ${e.message}", TerminalItemType.ERROR))
+            }
+        }
+    }
+
+    private fun handleChrome(args: List<String>) {
+        if (args.isEmpty()) {
+            val matched = findApp("chrome")
+            if (matched != null) {
+                callbacks.onAddLog(TerminalLogItem("Opening Chrome...", TerminalItemType.SUCCESS))
+                callbacks.onLaunchApp(matched)
+            } else {
+                context.openUrl("https://www.google.com")
+            }
+            return
+        }
+
+        var urlOrQuery = args.joinToString(" ").trim()
+        if (urlOrQuery.startsWith("open ", ignoreCase = true)) {
+            urlOrQuery = urlOrQuery.substring(5).trim()
+        }
+
+        val targetUrl = if (urlOrQuery.contains(".") && !urlOrQuery.contains(" ")) {
+            if (urlOrQuery.startsWith("http://") || urlOrQuery.startsWith("https://")) {
+                urlOrQuery
+            } else {
+                "https://$urlOrQuery"
+            }
+        } else {
+            "https://www.google.com/search?q=" + Uri.encode(urlOrQuery)
+        }
+
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
+                setPackage("com.android.chrome")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+            callbacks.onAddLog(TerminalLogItem("Opening Chrome: $targetUrl", TerminalItemType.SUCCESS))
+        } catch (e: Exception) {
+            context.openUrl(targetUrl)
+            callbacks.onAddLog(TerminalLogItem("Opening browser: $targetUrl", TerminalItemType.SUCCESS))
+        }
+    }
+
+    private fun handleSshCommand(args: List<String>) {
+        if (args.isEmpty()) {
+            val status = if (sshTerminalManager.isConnected) "CONNECTED" else "DISCONNECTED"
+            callbacks.onAddLog(
+                TerminalLogItem(
+                    "SSH Terminal to Termux ($status):\n" +
+                    "  Configured: ${prefs.terminalSshUser.ifBlank { "<no user>" }}@${prefs.terminalSshHost}:${prefs.terminalSshPort}\n\n" +
+                    "Commands:\n" +
+                    "  ssh connect [user] [pass] [host] [port] : Connect to SSH session\n" +
+                    "  ssh disconnect, ssh exit                : Terminate SSH session\n" +
+                    "  ssh status                              : Check SSH status\n" +
+                    "  ssh setup                               : How to start OpenSSH in Termux\n" +
+                    "  ssh config <user> <pass> [host] [port]  : Save default SSH credentials",
+                    TerminalItemType.OUTPUT
+                )
+            )
+            return
+        }
+
+        when (args[0].lowercase()) {
+            "connect" -> {
+                val user = args.getOrNull(1) ?: prefs.terminalSshUser.ifBlank { "u0_a0" }
+                val pass = args.getOrNull(2) ?: prefs.terminalSshPass
+                val host = args.getOrNull(3) ?: prefs.terminalSshHost.ifBlank { "127.0.0.1" }
+                val port = args.getOrNull(4)?.toIntOrNull() ?: prefs.terminalSshPort
+
+                if (args.size > 1) {
+                    prefs.terminalSshUser = user
+                    prefs.terminalSshPass = pass
+                    prefs.terminalSshHost = host
+                    prefs.terminalSshPort = port
+                }
+
+                callbacks.onRunningStateChanged(true)
+                sshTerminalManager.connect(host = host, port = port, user = user, password = pass)
+            }
+            "disconnect", "exit", "close", "stop" -> {
+                if (sshTerminalManager.isConnected) {
+                    sshTerminalManager.disconnect()
+                } else {
+                    callbacks.onAddLog(TerminalLogItem("SSH is not currently connected.", TerminalItemType.OUTPUT))
+                }
+            }
+            "status" -> {
+                val status = if (sshTerminalManager.isConnected) "CONNECTED (active shell session)" else "DISCONNECTED"
+                callbacks.onAddLog(TerminalLogItem("SSH Status: $status", TerminalItemType.SUCCESS))
+                callbacks.onAddLog(TerminalLogItem("Target: ${prefs.terminalSshUser.ifBlank { "u0_a0" }}@${prefs.terminalSshHost}:${prefs.terminalSshPort}", TerminalItemType.OUTPUT))
+            }
+            "config" -> {
+                if (args.size < 3) {
+                    callbacks.onAddLog(TerminalLogItem("Usage: ssh config <user> <password> [host] [port]", TerminalItemType.ERROR))
+                    return
+                }
+                prefs.terminalSshUser = args[1]
+                prefs.terminalSshPass = args[2]
+                if (args.size > 3) prefs.terminalSshHost = args[3]
+                if (args.size > 4) prefs.terminalSshPort = args[4].toIntOrNull() ?: 8022
+                callbacks.onAddLog(TerminalLogItem("Saved SSH config: ${prefs.terminalSshUser}@${prefs.terminalSshHost}:${prefs.terminalSshPort}", TerminalItemType.SUCCESS))
+            }
+            "setup" -> {
+                callbacks.onAddLog(
+                    TerminalLogItem(
+                        "--- Setting up OpenSSH in Termux ---\n" +
+                        "1. Open Termux and run:\n" +
+                        "     pkg install openssh\n" +
+                        "2. Set a password for your user:\n" +
+                        "     passwd\n" +
+                        "3. Find your Termux username:\n" +
+                        "     whoami   (e.g. u0_a245)\n" +
+                        "4. Start the SSH server in Termux:\n" +
+                        "     sshd\n" +
+                        "5. Now in Olauncher CLI, simply run:\n" +
+                        "     ssh connect <user> <password>\n" +
+                        "   (Example: ssh connect u0_a245 mypass)\n" +
+                        "You will have full interactive Termux shell right here!",
+                        TerminalItemType.OUTPUT
+                    )
+                )
+            }
+            else -> {
+                // If it's a sub-command and we are connected, forward it
+                if (sshTerminalManager.isConnected) {
+                    sshTerminalManager.sendCommand(args.joinToString(" "))
+                } else {
+                    callbacks.onAddLog(TerminalLogItem("Unknown SSH command '${args[0]}'. Use 'ssh' for help.", TerminalItemType.ERROR))
+                }
             }
         }
     }
@@ -846,6 +1144,18 @@ class TerminalCommandHandler(
             "  settings        : Open launcher settings",
             "  mode [gui|cli]  : Switch between Terminal and GUI mode",
             "  clear, cls      : Clear terminal screen",
+            "",
+            "Actions & Shortcuts:",
+            "  call <number>   : Dial phone number directly (e.g. 'call 1234567890')",
+            "  whatsapp <num>  : Open WhatsApp chat/call (e.g. 'whatsapp call +123456')",
+            "  chrome <url>    : Open URL in Chrome (e.g. 'chrome open facebook.com')",
+            "",
+            "SSH Client to Termux (Interactive Linux Session):",
+            "  ssh             : Display SSH client status & menu",
+            "  ssh connect     : Connect to Termux SSH server (127.0.0.1:8022)",
+            "  ssh disconnect  : Disconnect active SSH session",
+            "  ssh setup       : Setup guide to enable sshd in Termux",
+            "",
             "Networking & Internet:",
             "  ping <host> [n] : Ping host with latency metrics (e.g. 'ping google.com')",
             "  net, ip         : Inspect network connection, Wi-Fi/Cellular, DNS & status",
@@ -1236,7 +1546,8 @@ class TerminalCommandHandler(
         val list = mutableListOf<TerminalSuggestion>()
 
         val commands = listOf(
-            "help", "apps", "cd", "pwd", "ls", "open", "info", "uninstall",
+            "help", "apps", "ssh", "call", "whatsapp", "chrome",
+            "cd", "pwd", "ls", "open", "info", "uninstall",
             "history", "pin", "unpin", "theme", "termux", "battery", "time", "date",
             "device", "alias", "search", "settings", "mode", "clear"
         )
@@ -1306,6 +1617,26 @@ class TerminalCommandHandler(
             for (t in themeIds) {
                 if (t.startsWith(sub)) {
                     list.add(TerminalSuggestion("theme $t", "theme $t", executeImmediately = true))
+                }
+            }
+            return list
+        }
+
+        if (q.startsWith("ssh")) {
+            val sub = q.removePrefix("ssh").trim()
+            val sshSubCommands = listOf(
+                "connect", "disconnect", "status", "setup", "config "
+            )
+            for (sc in sshSubCommands) {
+                if (sub.isEmpty() || sc.startsWith(sub)) {
+                    val isAction = sc.endsWith(" ")
+                    list.add(
+                        TerminalSuggestion(
+                            displayText = "ssh $sc",
+                            commandToFill = "ssh $sc",
+                            executeImmediately = !isAction
+                        )
+                    )
                 }
             }
             return list
